@@ -23,6 +23,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Disable demo bots
+        run: node patch-live.mjs
       - name: Setup Pages
         uses: actions/configure-pages@v5
         with:
