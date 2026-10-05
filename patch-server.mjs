@@ -15,8 +15,11 @@ function replaceOnce(oldText, newText, label) {
   console.log(`[live] ${label} aktif edildi.`);
 }
 
-// Heart Me / Beni Sev de tank çıkarsın.
-replaceOnce(
+// Heart Me / Beni Sev de tank çıkarsın. Eski yamanın yorumlu sürümü de kabul edilir.
+if (text.includes("giftNameKey === 'heart me'") && text.includes('gift.coins = 20')) {
+  console.log('[live] Heart Me / Beni Sev -> Tank zaten aktif.');
+} else {
+  replaceOnce(
 `    if (giftNameKey === 'heart me' || giftNameKey === 'beni sev') {
       console.log('[GIFT] Heart Me / Beni Sev bilerek yok sayıldı.');
       return;
@@ -26,7 +29,8 @@ replaceOnce(
       console.log('[GIFT] Heart Me / Beni Sev -> Tank');
     }`,
 'Heart Me / Beni Sev -> Tank'
-);
+  );
+}
 
 // Eski sürüm, şövalye ekrana ulaşmadan kullanıcıyı "ödül aldı" diye kalıcı kaydedebiliyordu.
 // Yeni dosya adıyla bir kez temiz başlangıç yapıyoruz; bundan sonra tekrar takip ödülü korunur.
@@ -64,6 +68,34 @@ function addPendingOnce(userId, action, username) {
 }
 `,
 'Takip ödülü güvenli kuyruk'
+);
+
+replaceOnce(
+`function rewardOrQueue(user, action, count = 1, reason = '') {
+  if (count <= 0 || user.id === 'unknown') return;
+  const team = teamByUser.get(user.id);
+  if (!team) {
+    addPending(user.id, action, count, user.name);
+    broadcast({ type: 'notice', text: \`${'${user.name}'} ödülü hazır; önce KIRMIZI veya MAVİ yaz.\` });
+    console.log(\`[WAIT] ${'${user.name}'} ${'${reason}'} ödülü bekliyor; takım seçmedi.\`);
+    return;
+  }
+  broadcast({ type: 'action', action, count, team, username: user.name, reason });
+}
+`,
+`function rewardOrQueue(user, action, count = 1, reason = '') {
+  if (count <= 0 || user.id === 'unknown') return;
+  const team = teamByUser.get(user.id);
+  if (!team || !hasGameClient()) {
+    addPending(user.id, action, count, user.name);
+    if (!team) broadcast({ type: 'notice', text: \`${'${user.name}'} ödülü hazır; önce KIRMIZI veya MAVİ yaz.\` });
+    console.log(\`[WAIT] ${'${user.name}'} ${'${reason}'} ödülü sırada. team=${'${team || "yok"}'} game=${'${hasGameClient() ? "bağlı" : "kapalı"}'}\`);
+    return;
+  }
+  broadcast({ type: 'action', action, count, team, username: user.name, reason });
+}
+`,
+'Genel ödül teslimat kuyruğu'
 );
 
 replaceOnce(
