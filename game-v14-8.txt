@@ -11,11 +11,12 @@ setInterval(()=>{if(state.ended)return;state.seconds--;if(state.seconds<=0)endBa
 $('soundToggle').onclick=()=>{soundOn=!soundOn;if(soundOn){ensureAudio();sfx('king');$('soundToggle').textContent='🔊 Ses';}else{$('soundToggle').textContent='🔇 Ses';}};document.addEventListener('pointerdown',()=>{if(soundOn)ensureAudio();},{once:true});$('openTest').onclick=()=>{$('overlay').classList.add('show');if(soundOn)ensureAudio();}; $('closeTest').onclick=()=>$('overlay').classList.remove('show'); document.querySelectorAll('.ev').forEach(b=>b.onclick=()=>{special(b.dataset.action,$('testTeam').value,($('testName').value||'Viewer').trim());$('overlay').classList.remove('show')});
 function loop(now){const dt=Math.min(.04,(now-state.last)/1000);state.last=now;if(state.shake>0){const sx=rand(-state.shake,state.shake),sy=rand(-state.shake*.55,state.shake*.55);canvas.style.transform=`translate(${sx}px,${sy}px)`;state.shake=Math.max(0,state.shake-dt*42);}else canvas.style.transform='translate(0,0)';drawBG(); if(!state.ended){demo(dt); for(const u of state.units)u.update(dt); resolveCollisions(); updateProjectiles(dt); updateParticles(dt); state.units=state.units.filter(u=>!u.dead)} state.units.filter(u=>u.flying).forEach(u=>u.draw()); if(state.boss)drawBoss(dt); state.units.filter(u=>!u.flying).sort((a,b)=>a.y-b.y).forEach(u=>u.draw()); drawProjectiles(); drawAttackFX(); drawEffects(dt); drawParticles(); updateHud(); requestAnimationFrame(loop)}
 king=function(team,name){toast(`👑 ${name} KRAL OLDU!`);sfx('king');state.effects.push({type:'king',team,time:3,name});const h=spawn(team,'hero',name);h.x=team==='red'?245:W-245;h.landY=GROUND-150;h.enterStartY=-180;h.baseY=-180;h.y=-180;h.enter=1.12;h.enterTotal=1.12;h.enterStyle='hero';h.landed=false;entryFX(h,'hero',1.35);const w=spawn(team,'wizard',name);w.x=team==='red'?205:W-205;entryFX(w,'wizard',1.35);const i=spawn(team,'iceMage',name);i.x=team==='red'?285:W-285;i.baseY=GROUND-38;i.y=i.baseY;entryFX(i,'ice',1.45);const d=spawn(team,'dragon',name);d.x=team==='red'?225:W-225;d.baseY=GROUND-160;d.y=d.baseY;entryFX(d,'dragon',1.55)};
-// 2026-10 TikTok Turkey gift-value balance.
+// User-defined TikTok gift-value balance.
 Object.assign(DEF.soldier,{hp:100,atk:7,val:1});
 Object.assign(DEF.archer,{hp:85,atk:9,reload:.95,val:1});
 Object.assign(DEF.knight,{hp:300,atk:22,val:5});
 Object.assign(DEF.giant,{hp:540,atk:31,val:5});
+Object.assign(DEF.tank,{hp:780,atk:42,val:20});
 Object.assign(DEF.wizard,{hp:600,atk:44,val:50});
 Object.assign(DEF.mech,{hp:900,atk:58,val:88});
 Object.assign(DEF.ninja,{hp:560,atk:52,val:90});
@@ -23,26 +24,28 @@ Object.assign(DEF.iceMage,{hp:680,atk:50,val:99});
 Object.assign(DEF.dragon,{hp:980,atk:56,val:100});
 Object.assign(DEF.stormGod,{hp:1350,atk:80,val:199});
 Object.assign(DEF.hero,{hp:1450,atk:84,val:199});
-Object.assign(DEF.tank,{hp:2450,atk:138,val:299});
 
+const EVENT_COINS={tornado:10,tank:20,meteor:100,nuke:500};
+window.LIVE_EVENT_COINS=EVENT_COINS;
 const GIFT_MAP={
   'tiktok':{coins:1,action:'soldier',label:'TikTok → Asker'},
   'rose':{coins:1,action:'archerGift',label:'Rose → Okçu'},
   'finger heart':{coins:5,action:'knight',label:'Finger Heart → Şövalye'},
   'blue bead':{coins:5,action:'giant',label:'Blue Bead → Dev'},
+  'heart':{coins:10,action:'tornado',label:'Heart → Kasırga'},
+  'superpower':{coins:20,action:'tank',label:'Superpower → Tank'},
+  'sheep joy':{coins:20,action:'tank',label:'Sheep Joy → Tank'},
   'tea':{coins:50,action:'wizard',label:'Tea → Büyücü'},
   'butterfly':{coins:88,action:'mech',label:'Butterfly → Mecha Robot'},
   'family':{coins:90,action:'ninja',label:'Family → Gölge Savaşçı'},
   'little crown':{coins:99,action:'iceMage',label:'Little Crown → Buz Büyücüsü'},
   'hat and mustache':{coins:99,action:'heal',label:'Hat and Mustache → Takımı Güçlendir'},
   'mishka bear':{coins:100,action:'dragon',label:'Mishka Bear → Ejderha'},
+  'meteor shower':{coins:100,action:'meteor',label:'Meteor Shower → Meteor'},
   'heart hood':{coins:199,action:'stormGod',label:'Heart Hood → Fırtına Tanrısı'},
   'sunglasses':{coins:199,action:'hero',label:'Sunglasses → Süper Kahraman'},
-  'gamer cat':{coins:199,action:'nuke',label:'Gamer Cat → Nükleer Bomba'},
-  'superpower':{coins:299,action:'tank',label:'Superpower → Tank'},
-  'swan':{coins:699,action:'king',label:'Swan → Süper Kahramanlar Mix'},
-  'sheep joy':{coins:899,action:'heavyTank',label:'Sheep Joy → Tank Taburu'},
-  'meteor shower':{coins:3000,action:'meteor',label:'Meteor Shower → Meteor Felaketi'}
+  'gamer cat':{coins:500,action:'nuke',label:'Gamer Cat → Nükleer Bomba'},
+  'swan':{coins:699,action:'king',label:'Swan → Süper Kahramanlar Mix'}
 };
 window.LIVE_GIFT_MAP=GIFT_MAP;
 
@@ -50,13 +53,6 @@ const _baseSpecial=special;
 special=function(action,team,name){
   if(action==='archerGift'){
     spawn(team,'archer',name);toast(`🏹 ${name} OKÇU gönderdi!`);return;
-  }
-  if(action==='heavyTank'){
-    toast(`🪖🪖🪖 ${name} TANK TABURU gönderdi!`);sfx('tank');
-    for(let j=0;j<3;j++){
-      const t=spawn(team,'tank',name);t.baseY=GROUND-18+j*8;t.y=t.baseY;t.x+=(team==='red'?1:-1)*j*34;entryFX(t,'tank',1.05+j*.08);
-    }
-    addPoints(name,2);return;
   }
   return _baseSpecial(action,team,name);
 };
@@ -71,22 +67,35 @@ heal=function(team,name){
   });
 };
 
+tornado=function(team,name){
+  toast(`🌪️ ${name} 10 JETONLUK KASIRGA başlattı!`);
+  state.effects.push({type:'tornado',team,time:1.8});
+  state.units.filter(u=>u.team!==team&&!u.dead).forEach(u=>{u.hp-=32;u.x+=(team==='red'?50:-50);if(u.hp<=0)u.dead=true;});
+};
+
 meteor=function(team,name){
-  toast(`☄️ ${name} 3000 JETONLUK METEOR FELAKETİ başlattı!`);sfx('meteor');
+  toast(`☄️ ${name} 100 JETONLUK METEOR başlattı!`);sfx('meteor');
   const target=team==='red'?'blue':'red',impacts=[];
-  for(let j=0;j<10;j++){
-    const hitX=target==='red'?rand(115,410):rand(W-410,W-115);
-    impacts.push({x:hitX,delay:j*.15,size:rand(1.0,1.35)});
+  for(let j=0;j<6;j++){
+    const hitX=target==='red'?rand(120,390):rand(W-390,W-120);
+    impacts.push({x:hitX,delay:j*.18,size:rand(.9,1.2)});
     setTimeout(()=>{
-      state.shake=Math.max(state.shake,24);burst(hitX,GROUND-90,'#ffb458',220);burst(hitX,GROUND-90,'rgba(255,245,210,.96)',135);
-      particles(hitX,GROUND-80,'#ffac59',34,120);particles(hitX,GROUND-95,'#ffd27b',20,80);
-      state.effects.push({type:'crater',x:hitX,y:GROUND-76,time:4,total:4,seed:Math.random()*10});
-      state.units.filter(u=>u.team===target&&!u.dead&&Math.abs(u.x-hitX)<145).forEach(u=>hit(u,420,{team,type:'dragon',name}));
-      damageCastle(target,1500,{team,type:'dragon',name});
-    },j*150);
+      state.shake=Math.max(state.shake,18);burst(hitX,GROUND-90,'#ffb458',185);burst(hitX,GROUND-90,'rgba(255,245,210,.94)',110);
+      particles(hitX,GROUND-80,'#ffac59',24,95);particles(hitX,GROUND-95,'#ffd27b',14,65);
+      state.effects.push({type:'crater',x:hitX,y:GROUND-76,time:3.2,total:3.2,seed:Math.random()*10});
+      state.units.filter(u=>u.team===target&&!u.dead&&Math.abs(u.x-hitX)<125).forEach(u=>hit(u,110,{team,type:'dragon',name}));
+      damageCastle(target,280,{team,type:'dragon',name});
+    },j*180);
   }
-  if(state.boss&&state.boss.hp>0){setTimeout(()=>{if(state.boss&&state.boss.hp>0){state.boss.hp=Math.max(0,state.boss.hp-state.boss.maxHp*.75);burst(state.boss.x,state.boss.y,'#fff0a8',240);state.shake=Math.max(state.shake,28);if(state.boss.hp<=0)state.boss=null;}},1450);}
-  state.effects.push({type:'meteor',team,target,time:3.4,total:3.4,impacts,name});
+  if(state.boss&&state.boss.hp>0){setTimeout(()=>{if(state.boss&&state.boss.hp>0){state.boss.hp=Math.max(0,state.boss.hp-state.boss.maxHp*.20);burst(state.boss.x,state.boss.y,'#fff0a8',180);state.shake=Math.max(state.shake,20);if(state.boss.hp<=0)state.boss=null;}},1050);}
+  state.effects.push({type:'meteor',team,target,time:3,total:3,impacts,name});
+};
+
+launchNuke=function(team,name='Viewer'){
+  if(state.effects.some(e=>e.type==='nuke'&&!e.done)){toast('☢️ Nükleer bomba zaten aktif!');return;}
+  const targetX=getEnemyClusterX(team);
+  toast(`☢️ ${name} 500 JETONLUK NÜKLEER BOMBA BIRAKTI!`);sfx('nuke');
+  state.effects.push({type:'nuke',team,name,time:12.8,total:12.8,drop:1.2,countdown:10,explodeAt:11.2,done:false,lastTick:11,x:targetX,groundY:GROUND-92});
 };
 
 king=function(team,name){
