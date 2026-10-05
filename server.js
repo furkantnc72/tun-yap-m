@@ -39,9 +39,10 @@ function broadcast(payload) {
 
 function getUser(data) {
   const user = data?.user || {};
+  const uniqueId = user.uniqueId || data?.uniqueId || '';
   return {
-    id: user.uniqueId || user.userId || data?.uniqueId || data?.userId || 'unknown',
-    name: user.nickname || user.uniqueId || data?.nickname || data?.uniqueId || 'Viewer'
+    id: uniqueId || user.userId || data?.userId || 'unknown',
+    name: uniqueId ? `@${uniqueId}` : (user.nickname || data?.nickname || 'Viewer')
   };
 }
 
