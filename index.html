@@ -1,53 +1,112 @@
 <!doctype html>
-<html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>GridDraft</title>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>LIVE Kingdom Battle v2</title>
 <style>
-:root{--bg:#07120a;--p:#101a12;--b:#26372a;--g:#62ff32;--t:#f5f8f5;--m:#9bb09e;--y:#f4c542}
-*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top,#14341b,#060a07 65%);color:var(--t);font-family:system-ui,-apple-system,Segoe UI,sans-serif}
-.app{max-width:1050px;margin:auto;padding:12px}.top{display:flex;justify-content:space-between;align-items:center;gap:8px}.brand{font-weight:950;font-size:22px}.brand b{color:var(--g)}
-button{border:1px solid var(--b);background:#111c14;color:#fff;border-radius:10px;padding:10px 12px;font-weight:800}.primary{background:var(--g);color:#071208;border-color:var(--g)}
-.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin:12px 0}.stat{border:1px solid var(--b);background:var(--p);border-radius:12px;padding:9px}.stat small{color:var(--m);display:block;font-weight:800}.stat strong{font-size:21px}
-.main{display:grid;grid-template-columns:1fr 320px;gap:12px}.panel{border:1px solid var(--b);background:#0c130e;border-radius:16px;overflow:hidden}.head{padding:12px;border-bottom:1px solid var(--b);font-weight:900}
-.field{position:relative;padding:12px;background:linear-gradient(#12351a99 1px,transparent 1px),linear-gradient(90deg,#12351a99 1px,transparent 1px),#0a2210;background-size:34px 34px;min-height:560px}
-.grid{position:relative;z-index:2;display:grid;grid-template-columns:repeat(3,1fr);gap:10px;height:535px}.slot{border:1px dashed #45624a;border-radius:14px;display:flex;align-items:center;justify-content:center;position:relative;min-width:0}.slot em{position:absolute;bottom:5px;left:7px;font-size:9px;color:#9db6a2;font-style:normal;font-weight:900}.slot.sel{outline:2px solid #fff}.slot.ok{border-color:var(--g)}
-.lines{position:absolute;inset:12px;z-index:1;pointer-events:none}
-.card{--c:#f1c84f;width:min(105px,92%);aspect-ratio:.74;border:2px solid var(--c);border-radius:11px;background:linear-gradient(145deg,color-mix(in srgb,var(--c) 30%,#101510),#0b100d);padding:6px;text-align:center;display:flex;flex-direction:column;justify-content:space-between;box-shadow:0 8px 18px #0008;cursor:pointer;position:relative}
-.card .row{display:flex;justify-content:space-between;font-weight:950;font-size:10px}.face{width:38px;height:38px;border-radius:50%;border:2px solid #ffffff55;display:grid;place-items:center;margin:3px auto;font-weight:950}.name{font-size:11px;font-weight:950}.meta{font-size:7.5px;color:#e4ece6}.dot{width:10px;height:10px;border-radius:50%;margin:3px auto 0;background:#304033}.dot.y{background:var(--y);box-shadow:0 0 9px var(--y)}.dot.g{background:#69f26b;box-shadow:0 0 9px #69f26b}
-.side{position:sticky;top:8px}.round{padding:12px}.round small{color:var(--m)}.offers{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:10px}.offers .card{width:100%}.msg{text-align:center;color:var(--m);font-size:12px;padding:0 10px 10px}.actions{display:flex;gap:6px;padding:10px;border-top:1px solid var(--b)}.actions button{flex:1}
-.done{display:none;text-align:center;padding:18px}.done.show{display:block}.done .big{font-size:54px;color:var(--g);font-weight:1000}
-.legend{padding:10px;font-size:11px;color:#bfccc1;border-top:1px solid var(--b);line-height:1.6}
-.toast{position:fixed;bottom:20px;left:50%;transform:translate(-50%,20px);opacity:0;background:#101a12;border:1px solid #38513d;padding:10px 13px;border-radius:10px;transition:.2s;z-index:10}.toast.show{opacity:1;transform:translate(-50%,0)}
-@media(max-width:800px){.main{grid-template-columns:1fr}.side{position:relative}.field{min-height:475px}.grid{height:450px}.stats{grid-template-columns:repeat(4,1fr)}}
-@media(max-width:500px){.app{padding:7px}.brand{font-size:18px}.stats .stat{padding:7px}.stat strong{font-size:17px}.field{padding:6px;min-height:445px}.lines{inset:6px}.grid{height:430px;gap:6px}.card{padding:4px}.face{width:30px;height:30px}.name{font-size:9px}.meta{font-size:6.5px}.offers{padding:7px;gap:4px}}
-</style></head>
-<body><div class="app">
-<div class="top"><div class="brand"><b>GRID</b>DRAFT</div><button onclick="resetGame()">Yeni Draft</button></div>
-<div class="stats"><div class="stat"><small>TALENT</small><strong id="tal">0</strong></div><div class="stat"><small>CHEM</small><strong id="chem">0</strong></div><div class="stat"><small>TOPLAM</small><strong id="total">0</strong></div><div class="stat"><small>GRADE</small><strong id="grade">—</strong></div></div>
-<div class="main"><section class="panel"><div class="head">Takım Grid'i</div><div class="field"><svg id="lines" class="lines"></svg><div id="grid" class="grid"></div></div></section>
-<aside class="panel side"><div class="round"><b id="round">ROUND 1 / 9</b><br><small>3 karttan birini seç.</small></div><div id="offers" class="offers"></div><div id="msg" class="msg">Takım, division veya draft yılı eşleşmeleri kimya kazandırır.</div><div id="done" class="done"><div id="final" class="big">0</div><b>Draft tamamlandı!</b><p>Kartlara dokunup uygun slotlarla yer değiştirebilirsin.</p></div><div class="legend">🟡 1 ortak özellik = +1 kimya<br>🟢 2+ ortak özellik = +2 kimya<br>Kartın toplam bağlantısı 2+ ise bonus alır.</div><div class="actions"><button onclick="optimize()">En İyi Diz</button><button class="primary" onclick="saveScore()">Skoru Kaydet</button></div></aside></div></div><div id="toast" class="toast"></div>
+:root{--bg:#020817;--panel:#0a1326;--red:#ff4f4f;--blue:#4f87ff;--gold:#ffd25b;--text:#f7f9ff;--muted:#9aa8c1}
+*{box-sizing:border-box}
+html,body{margin:0;background:#000;color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+body{display:flex;justify-content:center;min-height:100vh}
+#app{position:relative;width:min(100vw,562.5px);aspect-ratio:9/16;background:linear-gradient(#031027,#081a38 58%,#030914);overflow:hidden}
+.top{position:absolute;inset:0 0 auto 0;padding:16px 14px 0;z-index:5}
+.title{text-align:center;font-weight:900;letter-spacing:1.8px;font-size:18px;text-shadow:0 2px 8px #000}
+.hud{display:grid;grid-template-columns:1fr 92px 1fr;gap:10px;align-items:center;margin-top:10px}
+.team-row{display:flex;justify-content:space-between;align-items:center;font-size:13px;font-weight:900}
+.hp{height:20px;background:#1a2032;border:1px solid #ffffff22;border-radius:12px;overflow:hidden;margin-top:4px}
+.hp>div{height:100%;width:100%;transition:width .15s}
+.redhp{background:linear-gradient(90deg,#c72f2f,#ff6767)}
+.bluehp{background:linear-gradient(90deg,#3c65d6,#6aa3ff)}
+.timer{text-align:center;background:#0008;border:1px solid #ffffff22;border-radius:12px;padding:7px 2px;font-weight:900;font-size:25px}
+.sub{text-align:center;color:var(--muted);font-size:11px;margin-top:3px}
+#game{position:absolute;left:0;top:110px;width:100%;height:64%;display:block}
+.bottom{position:absolute;left:12px;right:12px;bottom:14px;z-index:6;display:grid;gap:9px}
+.panel{background:#020713e8;border:1px solid #ffffff1f;border-radius:17px;padding:11px}
+.gift-title,.lb-title{font-size:13px;font-weight:900;letter-spacing:.6px}
+.gift-title{text-align:center;color:#dce4f7}
+.lb-title{color:var(--gold)}
+.gifts{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin-top:8px}
+.gift{text-align:center;font-size:10px;color:#c9d2e6}.gift b{display:block;font-size:22px;margin-bottom:3px}
+.leaderboard{margin-top:7px;display:grid;gap:4px;font-size:11px}
+.row{display:grid;grid-template-columns:20px 1fr auto;gap:5px}
+.toast{position:absolute;z-index:12;left:50%;top:22%;transform:translateX(-50%);min-width:74%;max-width:90%;padding:12px 14px;border-radius:15px;background:#07101ef2;border:1px solid #ffffff29;text-align:center;font-weight:900;font-size:17px;opacity:0;transition:.16s;pointer-events:none;box-shadow:0 10px 35px #0009}
+.toast.show{opacity:1;transform:translateX(-50%) scale(1.02)}
+.testBtn{position:absolute;right:10px;top:10px;z-index:20;background:#14213d;color:#fff;border:1px solid #37558f;border-radius:999px;padding:7px 11px;font-weight:800;font-size:11px}
+.overlay{position:absolute;inset:0;z-index:30;background:#000b;display:none;align-items:flex-end}
+.overlay.show{display:flex}
+.sheet{width:100%;max-height:78%;overflow:auto;background:#0b1427;border-radius:22px 22px 0 0;border-top:1px solid #31466e;padding:16px}
+.sheetHead{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.sheet h2{margin:0;font-size:20px}
+.close{background:#1a2744;color:#fff;border:0;border-radius:10px;padding:9px 12px}
+label{display:block;font-size:12px;font-weight:800;margin:12px 0 5px}
+input,select{width:100%;padding:11px;border-radius:11px;border:1px solid #2e4168;background:#07101f;color:#fff;font-size:16px}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:9px;margin-top:14px}
+.ev{padding:13px 8px;border:0;border-radius:12px;background:#2d64ff;color:#fff;font-weight:900;font-size:14px}
+.ev.alt{background:#8255e8}
+.note{font-size:11px;color:#9aa8c1;margin-top:10px;line-height:1.35}
+.winner{position:absolute;inset:0;z-index:25;background:#000c;display:none;align-items:center;justify-content:center;text-align:center;padding:25px}
+.winner.show{display:flex}.winner h1{font-size:34px;margin:0 0 10px}
+@media (max-width:420px){.title{font-size:15px}.timer{font-size:23px}.gift b{font-size:20px}}
+</style>
+</head>
+<body>
+<div id="app">
+  <button class="testBtn" id="openTest">🧪 Test</button>
+  <div class="top">
+    <div class="title">LIVE KINGDOM BATTLE</div>
+    <div class="hud">
+      <div><div class="team-row"><span style="color:#ff8b8b">🔴 KIRMIZI</span><span id="redCount">0</span></div><div class="hp"><div id="redHpBar" class="redhp"></div></div><div class="sub"><span id="redHpText">100.0K</span> • Skor: <span id="redScore">0</span></div></div>
+      <div><div class="timer" id="timer">30:00</div><div class="sub">Savaş #<span id="battleNo">1</span></div></div>
+      <div><div class="team-row"><span id="blueCount">0</span><span style="color:#8db5ff">MAVİ 🔵</span></div><div class="hp"><div id="blueHpBar" class="bluehp"></div></div><div class="sub">Skor: <span id="blueScore">0</span> • <span id="blueHpText">100.0K</span></div></div>
+    </div>
+  </div>
+  <canvas id="game" width="1080" height="1080"></canvas>
+  <div id="toast" class="toast"></div>
+  <div class="bottom">
+    <div class="panel"><div class="gift-title">HEDİYE REHBERİ</div><div class="gifts"><div class="gift"><b>🌹</b>Asker</div><div class="gift"><b>⚔️</b>Şövalye</div><div class="gift"><b>💥</b>Meteor</div><div class="gift"><b>🐉</b>Ejderha</div><div class="gift"><b>👑</b>King Mode</div></div></div>
+    <div class="panel"><div class="lb-title">🏆 BUGÜNÜN KRALLARI</div><div id="leaderboard" class="leaderboard"></div></div>
+  </div>
+  <div id="winner" class="winner"><div><h1 id="winnerTitle"></h1><div>10 saniye sonra yeni savaş…</div></div></div>
+  <div id="overlay" class="overlay"><div class="sheet"><div class="sheetHead"><h2>🧪 Hediye Test Paneli</h2><button class="close" id="closeTest">Kapat</button></div><label>Kullanıcı adı</label><input id="testName" value="Furkan1903"><label>Takım</label><select id="testTeam"><option value="red">🔴 Kırmızı</option><option value="blue">🔵 Mavi</option></select><div class="grid"><button class="ev" data-action="soldier">🌹 Asker</button><button class="ev" data-action="knight">⚔️ Şövalye</button><button class="ev" data-action="giant">🗿 Dev</button><button class="ev" data-action="dragon">🐉 Ejderha</button><button class="ev alt" data-action="meteor">☄️ Meteor</button><button class="ev alt" data-action="tornado">🌪️ Tornado</button><button class="ev alt" data-action="king">👑 King Mode</button><button class="ev alt" data-action="boss">☠️ Boss</button></div><div class="note">Bu sürümde test paneli oyunla aynı sayfada çalışır. Böylece iPhone/Safari'de ayrı dosyalar arasında veri paylaşımı gerekmez.</div></div></div>
+</div>
 <script>
-const T={Bronze:{p:6,c:'#b96f35'},Silver:{p:9,c:'#bac7d4'},Gold:{p:12,c:'#f1c84f'},Platinum:{p:16,c:'#9b78ff'},Hero:{p:20,c:'#4bbcff'}};
-const P=[['Liam Carter','QB','Miami','AFC East',2023],['Mason Reed','QB','Chicago','NFC North',2021],['Noah King','QB','Seattle','NFC West',2022],['Eli Brooks','QB','Atlanta','NFC South',2024],['Jack Turner','QB','Detroit','NFC North',2023],['Kobe Miles','WR','Chicago','NFC North',2022],['Andre Stone','WR','Seattle','NFC West',2024],['Malik Grant','WR','Atlanta','NFC South',2023],['Jay Knox','WR','Miami','AFC East',2021],['Rico Hart','WR','Detroit','NFC North',2023],['Devin Cross','RB','Miami','AFC East',2022],['Owen Price','RB','Chicago','NFC North',2023],['Cam Rivers','RB','Seattle','NFC West',2021],['Marcus Bell','RB','Atlanta','NFC South',2024],['Zion Ford','RB','Detroit','NFC North',2022],['Grant Wells','TE','Miami','AFC East',2021],['Isaac Moon','TE','Chicago','NFC North',2023],['Roman Hill','TE','Seattle','NFC West',2022],['Cal Ward','TE','Atlanta','NFC South',2023],['Aiden Fox','TE','Detroit','NFC North',2021]].map((x,i)=>({id:i,n:x[0],pos:x[1],team:x[2],div:x[3],yr:x[4]}));
-const S=[['WR',['WR']],['QB',['QB']],['RB',['RB']],['FLEX',['WR','RB','TE']],['TE',['TE']],['FLEX',['WR','RB','TE']],['WR',['WR']],['QB',['QB']],['RB',['RB']]].map((x,i)=>({id:i,l:x[0],a:x[1]}));
-const E=[[0,1],[1,2],[0,3],[1,4],[2,5],[3,4],[4,5],[3,6],[4,7],[5,8],[6,7],[7,8],[0,4],[2,4],[4,6],[4,8]];
-let st; const $=x=>document.getElementById(x);
-function tier(){let r=Math.random();return r<.07?'Hero':r<.23?'Platinum':r<.52?'Gold':r<.82?'Silver':'Bronze'}
-function openPos(){let z=new Set;S.filter(s=>!st.b[s.id]).forEach(s=>s.a.forEach(p=>z.add(p)));return [...z]}
-function makeOffers(){let pos=openPos(),pool=P.filter(p=>pos.includes(p.pos));st.o=[];for(let i=0;i<3;i++){let p=pool[Math.floor(Math.random()*pool.length)],t=tier();st.o.push({...p,u:Math.random(),t,pt:T[t].p})}}
-function ini(n){return n.split(' ').map(x=>x[0]).join('')}
-function link(a,b){if(!a||!b)return 0;let m=(a.team===b.team)+(a.div===b.div)+(a.yr===b.yr);return m>=2?2:m}
-function chemData(){let n=Array(9).fill(0),l=0;E.forEach(([a,b])=>{let v=link(st.b[a],st.b[b]);l+=v;n[a]+=v;n[b]+=v});let bonus=0;n.forEach((v,i)=>{if(st.b[i])bonus+=v>=4?11:v>=2?6:0});return{n,total:l+bonus}}
-function card(p,slot){let d=slot==null?'':chemData().n[slot]>=4?'g':chemData().n[slot]>=2?'y':'';return '<div class="card" style="--c:'+T[p.t].c+'"><div class="row"><span>'+p.pos+'</span><span>+'+p.pt+'</span></div><div class="face">'+ini(p.n)+'</div><div class="name">'+p.n+'</div><div class="meta">'+p.team+'<br>'+p.div+'<br>'+p.yr+'</div>'+(slot==null?'':'<div class="dot '+d+'"></div>')+'</div>'}
-function score(){let t=st.b.reduce((s,p)=>s+(p?p.pt:0),0),c=chemData().total;return{t,c,x:t+c}}
-function grade(x){return x>=150?'S':x>=130?'A+':x>=115?'A':x>=100?'B+':x>=85?'B':x>=70?'C':'D'}
-function pick(i){let p=st.o[i],v=S.filter(s=>!st.b[s.id]&&s.a.includes(p.pos)),to=v.find(s=>s.l===p.pos)||v[0];if(!to)return;st.b[to.id]=p;st.r++;st.sel=null;if(st.r<=9)makeOffers();else st.o=[];render()}
-function slotClick(i){let p=st.b[i];if(st.sel==null){if(p){st.sel=i;render()};return}if(st.sel===i){st.sel=null;render();return}let a=st.b[st.sel],b=st.b[i];if(S[i].a.includes(a.pos)&&(!b||S[st.sel].a.includes(b.pos))){st.b[i]=a;st.b[st.sel]=b;st.sel=null;render()}else toast('Bu slotlar uyumlu değil.')}
-function render(){let c=chemData();$('grid').innerHTML=S.map(s=>'<div class="slot '+(st.sel===s.id?'sel ':'')+(st.sel!=null&&st.b[st.sel]&&s.id!==st.sel&&s.a.includes(st.b[st.sel].pos)?'ok':'')+'" onclick="slotClick('+s.id+')" data-s="'+s.id+'">'+(st.b[s.id]?card(st.b[s.id],s.id):'<span style="font-size:28px;color:#315338">+</span>')+'<em>'+s.l+'</em></div>').join('');
-let done=st.r>9;$('round').textContent=done?'DRAFT TAMAMLANDI':'ROUND '+st.r+' / 9';$('offers').style.display=done?'none':'grid';$('msg').style.display=done?'none':'block';$('done').classList.toggle('show',done);if(!done)$('offers').innerHTML=st.o.map((p,i)=>'<div onclick="pick('+i+')">'+card(p,null)+'</div>').join('');
-let s=score();$('tal').textContent=s.t;$('chem').textContent=s.c;$('total').textContent=s.x;$('grade').textContent=grade(s.x);$('final').textContent=s.x;requestAnimationFrame(draw)}
-function draw(){let svg=$('lines'),g=$('grid'),gb=g.getBoundingClientRect();svg.setAttribute('viewBox','0 0 '+gb.width+' '+gb.height);svg.innerHTML='';E.forEach(([a,b])=>{let v=link(st.b[a],st.b[b]);if(!v)return;let A=g.querySelector('[data-s="'+a+'"]').getBoundingClientRect(),B=g.querySelector('[data-s="'+b+'"]').getBoundingClientRect(),L=document.createElementNS('http://www.w3.org/2000/svg','line');[['x1',A.left+A.width/2-gb.left],['y1',A.top+A.height/2-gb.top],['x2',B.left+B.width/2-gb.left],['y2',B.top+B.height/2-gb.top]].forEach(x=>L.setAttribute(x[0],x[1]));L.setAttribute('stroke',v===2?'#69f26b':'#f4c542');L.setAttribute('stroke-width',v===2?'5':'4');L.setAttribute('stroke-linecap','round');svg.appendChild(L)})}
-function optimize(){if(st.r<3)return toast('Önce birkaç kart seç.');let best=score().x,bb=[...st.b];for(let k=0;k<1200;k++){let a=Math.floor(Math.random()*9),b=Math.floor(Math.random()*9);if(a===b||!st.b[a])continue;let A=st.b[a],B=st.b[b];if(!S[b].a.includes(A.pos)||(B&&!S[a].a.includes(B.pos)))continue;[st.b[a],st.b[b]]=[B,A];let x=score().x;if(x>=best){best=x;bb=[...st.b]}else[st.b[a],st.b[b]]=[A,B]}st.b=bb;st.sel=null;render();toast('En iyi diziliş uygulandı.')}
-function saveScore(){if(st.r<=9)return toast('Önce draftı bitir.');let x=score().x,b=+(localStorage.gridDraftBest||0);if(x>b)localStorage.gridDraftBest=x;toast(x>b?'Yeni rekor: '+x:'Skor: '+x)}
-function toast(m){let t=$('toast');t.textContent=m;t.classList.add('show');clearTimeout(window.tt);window.tt=setTimeout(()=>t.classList.remove('show'),1700)}
-function resetGame(){st={r:1,b:Array(9).fill(null),o:[],sel:null};makeOffers();render()}window.addEventListener('resize',draw);resetGame();
-</script></body></html>
+(() => {
+const canvas=document.getElementById('game'),ctx=canvas.getContext('2d');
+const W=canvas.width,H=canvas.height,MAX_HP=100000;
+const state={redHp:MAX_HP,blueHp:MAX_HP,redScore:0,blueScore:0,soldiers:[],effects:[],battleNo:1,seconds:1800,ended:false,lastFrame:performance.now()};
+const names=['Furkan1903','Ahmet34','Mert','Can','Efe','Burak','Atlas','Deniz','Arda','Kaan'];
+const board={};
+function addPoints(name,pts){name=name||'Anonim';board[name]=(board[name]||0)+pts;renderBoard()}
+function renderBoard(){const arr=Object.entries(board).sort((a,b)=>b[1]-a[1]).slice(0,5),el=document.getElementById('leaderboard');el.innerHTML=arr.length?arr.map((x,i)=>`<div class="row"><span>${i+1}.</span><span>${x[0].replace(/[<>&]/g,'')}</span><b>${x[1]}</b></div>`).join(''):'<div style="color:#9aa8c1">Henüz oyuncu yok</div>'}
+function toast(t){const el=document.getElementById('toast');el.textContent=t;el.classList.add('show');clearTimeout(toast.t);toast.t=setTimeout(()=>el.classList.remove('show'),2500)}
+class Soldier{
+ constructor(team,type='soldier',name){this.team=team;this.type=type;this.name=name||names[Math.floor(Math.random()*names.length)];const red=team==='red';this.x=red?170+Math.random()*110:W-170-Math.random()*110;this.y=360+Math.random()*430;const d={soldier:{hp:120,atk:9,speed:57,range:38,size:22},knight:{hp:280,atk:20,speed:49,range:42,size:29},giant:{hp:760,atk:36,speed:27,range:52,size:43},dragon:{hp:920,atk:48,speed:76,range:125,size:46}}[type]||{hp:120,atk:9,speed:57,range:38,size:22};Object.assign(this,d);this.maxHp=this.hp;this.cool=0;this.dead=false}
+ update(dt){if(this.dead||state.ended)return;this.cool=Math.max(0,this.cool-dt);const enemies=state.soldiers.filter(s=>!s.dead&&s.team!==this.team);let target=null,dist=1e9;for(const e of enemies){const d=Math.hypot(e.x-this.x,e.y-this.y);if(d<dist){dist=d;target=e}}if(target&&dist<=this.range){if(this.cool<=0){target.hp-=this.atk;this.cool=.5;if(target.hp<=0){target.dead=true;this.scoreKill()}}}else if(target){const dx=target.x-this.x,dy=target.y-this.y,d=Math.hypot(dx,dy)||1;this.x+=dx/d*this.speed*dt;this.y+=dy/d*this.speed*dt}else{const castleX=this.team==='red'?930:150,dx=castleX-this.x;if(Math.abs(dx)>84)this.x+=Math.sign(dx)*this.speed*dt;else if(this.cool<=0){damageCastle(this.team==='red'?'blue':'red',this.atk*2,this.name);this.cool=.7}}}
+ scoreKill(){const p=this.type==='dragon'?80:this.type==='giant'?45:this.type==='knight'?25:10;if(this.team==='red')state.redScore+=p;else state.blueScore+=p;addPoints(this.name,p)}
+ draw(){if(this.dead)return;const red=this.team==='red',c=red?'#ff5c62':'#5c93ff';ctx.save();ctx.translate(this.x,this.y);if(this.type==='dragon'){ctx.fillStyle=c;ctx.beginPath();ctx.ellipse(0,0,48,29,0,0,Math.PI*2);ctx.fill();ctx.fillStyle='#ffcf54';ctx.beginPath();ctx.moveTo(red?42:-42,0);ctx.lineTo(red?78:-78,-14);ctx.lineTo(red?78:-78,14);ctx.fill()}else{ctx.fillStyle=c;ctx.beginPath();ctx.arc(0,0,this.size,0,Math.PI*2);ctx.fill();if(this.type==='giant'){ctx.strokeStyle='#f2c36b';ctx.lineWidth=6;ctx.stroke()}ctx.fillStyle='#e6ecf8';ctx.fillRect(red?this.size-2:-this.size-18,-4,20,8)}ctx.fillStyle='#101829';ctx.fillRect(-34,-this.size-22,68,7);ctx.fillStyle='#61e58a';ctx.fillRect(-34,-this.size-22,68*Math.max(0,this.hp/this.maxHp),7);ctx.fillStyle='#fff';ctx.font='bold 17px system-ui';ctx.textAlign='center';ctx.fillText(this.name.slice(0,14),0,this.size+24);ctx.restore()}
+}
+function spawn(team,type='soldier',name){state.soldiers.push(new Soldier(team,type,name));if(name)addPoints(name,type==='dragon'?100:type==='giant'?50:type==='knight'?25:10)}
+function damageCastle(team,amt,name){if(team==='red')state.redHp=Math.max(0,state.redHp-amt);else state.blueHp=Math.max(0,state.blueHp-amt);addPoints(name,Math.max(1,Math.round(amt/12)));if(state.redHp<=0||state.blueHp<=0)endBattle(state.redHp<=0?'blue':'red')}
+function meteor(team,name){toast(`☄️ ${name} METEOR YAĞMURU BAŞLATTI!`);const target=team==='red'?'blue':'red';for(let i=0;i<9;i++)setTimeout(()=>damageCastle(target,500,name),i*120);state.effects.push({type:'meteor',team,t:2.2})}
+function tornado(team,name){toast(`🌪️ ${name} KASIRGA BAŞLATTI!`);state.soldiers.filter(s=>s.team!==team).forEach(s=>s.hp-=100);state.effects.push({type:'tornado',t:2})}
+function king(team,name){toast(`👑 ${name} KRAL OLDU!`);for(let i=0;i<4;i++)spawn(team,'knight',name)}
+function boss(){toast('☠️ BOSS EVENT BAŞLADI!');state.effects.push({type:'boss',t:8})}
+function handle(action,team,name){if(action==='soldier'){spawn(team,'soldier',name);toast(`🌹 ${name} SAVAŞA KATILDI!`)}if(action==='knight'){spawn(team,'knight',name);toast(`⚔️ ${name} ŞÖVALYE GÖNDERDİ!`)}if(action==='giant'){spawn(team,'giant',name);toast(`🗿 ${name} DEV GÖNDERDİ!`)}if(action==='dragon'){spawn(team,'dragon',name);toast(`🐉 ${name} EJDERHAYI ÇAĞIRDI!`)}if(action==='meteor')meteor(team,name);if(action==='tornado')tornado(team,name);if(action==='king')king(team,name);if(action==='boss')boss()}
+document.querySelectorAll('.ev').forEach(b=>b.onclick=()=>handle(b.dataset.action,document.getElementById('testTeam').value,document.getElementById('testName').value.trim()||'Viewer'));
+document.getElementById('openTest').onclick=()=>document.getElementById('overlay').classList.add('show');
+document.getElementById('closeTest').onclick=()=>document.getElementById('overlay').classList.remove('show');
+function drawCastle(team,x,y){const red=team==='red';ctx.save();ctx.translate(x,y);ctx.fillStyle=red?'#772432':'#244e9f';ctx.fillRect(-78,-150,156,200);ctx.fillStyle=red?'#c23b47':'#4477de';for(let i=-1;i<=1;i++)ctx.fillRect(i*52-18,-188,36,48);ctx.fillStyle='#151c2a';ctx.fillRect(-27,-28,54,78);ctx.fillStyle='#f4d05e';ctx.beginPath();ctx.arc(0,-110,14,0,Math.PI*2);ctx.fill();ctx.fillStyle='#fff';ctx.font='bold 20px system-ui';ctx.textAlign='center';ctx.fillText(red?'KIRMIZI KALE':'MAVİ KALE',0,88);ctx.restore()}
+function drawBg(){ctx.clearRect(0,0,W,H);let g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,'#071831');g.addColorStop(.62,'#112849');g.addColorStop(1,'#071226');ctx.fillStyle=g;ctx.fillRect(0,0,W,H);ctx.fillStyle='#1f4b3f';ctx.fillRect(0,835,W,245);drawCastle('red',110,545);drawCastle('blue',970,545)}
+function drawFx(dt){state.effects.forEach(e=>e.t-=dt);state.effects=state.effects.filter(e=>e.t>0);for(const e of state.effects){if(e.type==='meteor'){ctx.fillStyle='#ffaf3b';for(let i=0;i<8;i++){let x=(Date.now()/4+i*137)%W;ctx.beginPath();ctx.arc(x,170+i*45,17+i*2,0,Math.PI*2);ctx.fill()}}if(e.type==='tornado'){ctx.strokeStyle='#d8f0ff';ctx.lineWidth=9;ctx.beginPath();ctx.arc(W/2,H/2,75+Math.sin(Date.now()/120)*28,0,Math.PI*1.8);ctx.stroke()}if(e.type==='boss'){ctx.fillStyle='#8a6d55';ctx.beginPath();ctx.arc(W/2,H/2,78,0,Math.PI*2);ctx.fill();ctx.fillStyle='#fff';ctx.font='bold 30px system-ui';ctx.textAlign='center';ctx.fillText('BOSS',W/2,H/2-110)}}}
+function updateHud(){redHpBar.style.width=(state.redHp/MAX_HP*100)+'%';blueHpBar.style.width=(state.blueHp/MAX_HP*100)+'%';redHpText.textContent=(state.redHp/1000).toFixed(1)+'K';blueHpText.textContent=(state.blueHp/1000).toFixed(1)+'K';redScore.textContent=state.redScore;blueScore.textContent=state.blueScore;redCount.textContent=state.soldiers.filter(s=>!s.dead&&s.team==='red').length;blueCount.textContent=state.soldiers.filter(s=>!s.dead&&s.team==='blue').length;const m=Math.floor(state.seconds/60),s=Math.max(0,Math.floor(state.seconds%60));timer.textContent=`${m}:${String(s).padStart(2,'0')}`;battleNo.textContent=state.battleNo}
+function endBattle(w){if(state.ended)return;state.ended=true;winnerTitle.textContent=w==='red'?'🔴 KIRMIZI KRALLIK KAZANDI!':'🔵 MAVİ KRALLIK KAZANDI!';winner.classList.add('show');setTimeout(()=>{winner.classList.remove('show');resetBattle()},10000)}
+function resetBattle(){state.redHp=MAX_HP;state.blueHp=MAX_HP;state.redScore=0;state.blueScore=0;state.seconds=1800;state.battleNo++;state.ended=false;state.soldiers=[];for(let i=0;i<6;i++){spawn('red');spawn('blue')}}
+setInterval(()=>{if(!state.ended){state.seconds--;if(state.seconds<=0)endBattle(state.redHp>=state.blueHp?'red':'blue');updateHud()}},1000);
+for(let i=0;i<6;i++){spawn('red');spawn('blue')}renderBoard();updateHud();
+function loop(now){const dt=Math.min(.05,(now-state.lastFrame)/1000);state.lastFrame=now;if(!state.ended){state.soldiers.forEach(s=>s.update(dt));state.soldiers=state.soldiers.filter(s=>!s.dead);if(state.soldiers.filter(s=>s.team==='red').length<4)spawn('red');if(state.soldiers.filter(s=>s.team==='blue').length<4)spawn('blue')}drawBg();state.soldiers.forEach(s=>s.draw());drawFx(dt);updateHud();requestAnimationFrame(loop)}
+requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
