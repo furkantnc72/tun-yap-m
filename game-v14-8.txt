@@ -11,5 +11,100 @@ setInterval(()=>{if(state.ended)return;state.seconds--;if(state.seconds<=0)endBa
 $('soundToggle').onclick=()=>{soundOn=!soundOn;if(soundOn){ensureAudio();sfx('king');$('soundToggle').textContent='🔊 Ses';}else{$('soundToggle').textContent='🔇 Ses';}};document.addEventListener('pointerdown',()=>{if(soundOn)ensureAudio();},{once:true});$('openTest').onclick=()=>{$('overlay').classList.add('show');if(soundOn)ensureAudio();}; $('closeTest').onclick=()=>$('overlay').classList.remove('show'); document.querySelectorAll('.ev').forEach(b=>b.onclick=()=>{special(b.dataset.action,$('testTeam').value,($('testName').value||'Viewer').trim());$('overlay').classList.remove('show')});
 function loop(now){const dt=Math.min(.04,(now-state.last)/1000);state.last=now;if(state.shake>0){const sx=rand(-state.shake,state.shake),sy=rand(-state.shake*.55,state.shake*.55);canvas.style.transform=`translate(${sx}px,${sy}px)`;state.shake=Math.max(0,state.shake-dt*42);}else canvas.style.transform='translate(0,0)';drawBG(); if(!state.ended){demo(dt); for(const u of state.units)u.update(dt); resolveCollisions(); updateProjectiles(dt); updateParticles(dt); state.units=state.units.filter(u=>!u.dead)} state.units.filter(u=>u.flying).forEach(u=>u.draw()); if(state.boss)drawBoss(dt); state.units.filter(u=>!u.flying).sort((a,b)=>a.y-b.y).forEach(u=>u.draw()); drawProjectiles(); drawAttackFX(); drawEffects(dt); drawParticles(); updateHud(); requestAnimationFrame(loop)}
 king=function(team,name){toast(`👑 ${name} KRAL OLDU!`);sfx('king');state.effects.push({type:'king',team,time:3,name});const h=spawn(team,'hero',name);h.x=team==='red'?245:W-245;h.landY=GROUND-150;h.enterStartY=-180;h.baseY=-180;h.y=-180;h.enter=1.12;h.enterTotal=1.12;h.enterStyle='hero';h.landed=false;entryFX(h,'hero',1.35);const w=spawn(team,'wizard',name);w.x=team==='red'?205:W-205;entryFX(w,'wizard',1.35);const i=spawn(team,'iceMage',name);i.x=team==='red'?285:W-285;i.baseY=GROUND-38;i.y=i.baseY;entryFX(i,'ice',1.45);const d=spawn(team,'dragon',name);d.x=team==='red'?225:W-225;d.baseY=GROUND-160;d.y=d.baseY;entryFX(d,'dragon',1.55)};
+// 2026-10 TikTok Turkey gift-value balance.
+Object.assign(DEF.soldier,{hp:100,atk:7,val:1});
+Object.assign(DEF.archer,{hp:85,atk:9,reload:.95,val:1});
+Object.assign(DEF.knight,{hp:300,atk:22,val:5});
+Object.assign(DEF.giant,{hp:540,atk:31,val:5});
+Object.assign(DEF.wizard,{hp:600,atk:44,val:50});
+Object.assign(DEF.mech,{hp:900,atk:58,val:88});
+Object.assign(DEF.ninja,{hp:560,atk:52,val:90});
+Object.assign(DEF.iceMage,{hp:680,atk:50,val:99});
+Object.assign(DEF.dragon,{hp:980,atk:56,val:100});
+Object.assign(DEF.stormGod,{hp:1350,atk:80,val:199});
+Object.assign(DEF.hero,{hp:1450,atk:84,val:199});
+Object.assign(DEF.tank,{hp:2450,atk:138,val:299});
+
+const GIFT_MAP={
+  'tiktok':{coins:1,action:'soldier',label:'TikTok → Asker'},
+  'rose':{coins:1,action:'archerGift',label:'Rose → Okçu'},
+  'finger heart':{coins:5,action:'knight',label:'Finger Heart → Şövalye'},
+  'blue bead':{coins:5,action:'giant',label:'Blue Bead → Dev'},
+  'tea':{coins:50,action:'wizard',label:'Tea → Büyücü'},
+  'butterfly':{coins:88,action:'mech',label:'Butterfly → Mecha Robot'},
+  'family':{coins:90,action:'ninja',label:'Family → Gölge Savaşçı'},
+  'little crown':{coins:99,action:'iceMage',label:'Little Crown → Buz Büyücüsü'},
+  'hat and mustache':{coins:99,action:'heal',label:'Hat and Mustache → Takımı Güçlendir'},
+  'mishka bear':{coins:100,action:'dragon',label:'Mishka Bear → Ejderha'},
+  'heart hood':{coins:199,action:'stormGod',label:'Heart Hood → Fırtına Tanrısı'},
+  'sunglasses':{coins:199,action:'hero',label:'Sunglasses → Süper Kahraman'},
+  'gamer cat':{coins:199,action:'nuke',label:'Gamer Cat → Nükleer Bomba'},
+  'superpower':{coins:299,action:'tank',label:'Superpower → Tank'},
+  'swan':{coins:699,action:'king',label:'Swan → Süper Kahramanlar Mix'},
+  'sheep joy':{coins:899,action:'heavyTank',label:'Sheep Joy → Tank Taburu'},
+  'meteor shower':{coins:3000,action:'meteor',label:'Meteor Shower → Meteor Felaketi'}
+};
+window.LIVE_GIFT_MAP=GIFT_MAP;
+
+const _baseSpecial=special;
+special=function(action,team,name){
+  if(action==='archerGift'){
+    spawn(team,'archer',name);toast(`🏹 ${name} OKÇU gönderdi!`);return;
+  }
+  if(action==='heavyTank'){
+    toast(`🪖🪖🪖 ${name} TANK TABURU gönderdi!`);sfx('tank');
+    for(let j=0;j<3;j++){
+      const t=spawn(team,'tank',name);t.baseY=GROUND-18+j*8;t.y=t.baseY;t.x+=(team==='red'?1:-1)*j*34;entryFX(t,'tank',1.05+j*.08);
+    }
+    addPoints(name,2);return;
+  }
+  return _baseSpecial(action,team,name);
+};
+
+heal=function(team,name){
+  toast(`✨ ${name} takımını güçlendirdi!`);sfx('heal');state.effects.push({type:'bless',team,time:2.2});
+  state.units.filter(u=>u.team===team&&!u.dead).forEach(u=>{
+    const amount=Math.max(120,Math.round(u.maxHp*.28));
+    u.hp=Math.min(u.maxHp,u.hp+amount);
+    const base=(DEF[u.type]&&DEF[u.type].atk)||u.atk;
+    u.atk=Math.min(u.atk*1.12,base*1.35);
+  });
+};
+
+meteor=function(team,name){
+  toast(`☄️ ${name} 3000 JETONLUK METEOR FELAKETİ başlattı!`);sfx('meteor');
+  const target=team==='red'?'blue':'red',impacts=[];
+  for(let j=0;j<10;j++){
+    const hitX=target==='red'?rand(115,410):rand(W-410,W-115);
+    impacts.push({x:hitX,delay:j*.15,size:rand(1.0,1.35)});
+    setTimeout(()=>{
+      state.shake=Math.max(state.shake,24);burst(hitX,GROUND-90,'#ffb458',220);burst(hitX,GROUND-90,'rgba(255,245,210,.96)',135);
+      particles(hitX,GROUND-80,'#ffac59',34,120);particles(hitX,GROUND-95,'#ffd27b',20,80);
+      state.effects.push({type:'crater',x:hitX,y:GROUND-76,time:4,total:4,seed:Math.random()*10});
+      state.units.filter(u=>u.team===target&&!u.dead&&Math.abs(u.x-hitX)<145).forEach(u=>hit(u,420,{team,type:'dragon',name}));
+      damageCastle(target,1500,{team,type:'dragon',name});
+    },j*150);
+  }
+  if(state.boss&&state.boss.hp>0){setTimeout(()=>{if(state.boss&&state.boss.hp>0){state.boss.hp=Math.max(0,state.boss.hp-state.boss.maxHp*.75);burst(state.boss.x,state.boss.y,'#fff0a8',240);state.shake=Math.max(state.shake,28);if(state.boss.hp<=0)state.boss=null;}},1450);}
+  state.effects.push({type:'meteor',team,target,time:3.4,total:3.4,impacts,name});
+};
+
+king=function(team,name){
+  toast(`👑 ${name} SÜPER KAHRAMANLAR MIX çağırdı!`);sfx('king');state.effects.push({type:'king',team,time:3,name});
+  const h=spawn(team,'hero',name);h.x=team==='red'?245:W-245;h.landY=GROUND-150;h.enterStartY=-180;h.baseY=-180;h.y=-180;h.enter=1.12;h.enterTotal=1.12;h.enterStyle='hero';h.landed=false;entryFX(h,'hero',1.35);
+  const w=spawn(team,'wizard',name);w.x=team==='red'?205:W-205;entryFX(w,'wizard',1.35);
+  const i=spawn(team,'iceMage',name);i.x=team==='red'?285:W-285;i.baseY=GROUND-38;i.y=i.baseY;entryFX(i,'ice',1.45);
+  const d=spawn(team,'dragon',name);d.x=team==='red'?225:W-225;d.baseY=GROUND-160;d.y=d.baseY;entryFX(d,'dragon',1.55);
+  [h,w,i,d].forEach(u=>{u.maxHp=Math.round(u.maxHp*1.15);u.hp=u.maxHp;u.atk=Math.round(u.atk*1.12)});
+  addPoints(name,251);
+};
+
+window.handleTikTokGift=function(giftName,team='red',userName='Viewer'){
+  const key=String(giftName||'').trim().toLowerCase();
+  if(key==='heart me'||key==='beni sev')return false;
+  const g=GIFT_MAP[key];if(!g)return false;
+  special(g.action,team,userName);return true;
+};
+
 renderBoard(); reset(); requestAnimationFrame(loop);
 })();
