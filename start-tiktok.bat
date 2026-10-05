@@ -9,14 +9,12 @@ if errorlevel 1 (
   exit /b 1
 )
 
-if not exist node_modules (
-  echo Ilk kurulum yapiliyor...
-  call npm install
-  if errorlevel 1 (
-    echo npm install basarisiz oldu.
-    pause
-    exit /b 1
-  )
+echo TikTok baglanti kutuphanesi kontrol ediliyor...
+call npm install
+if errorlevel 1 (
+  echo npm install basarisiz oldu.
+  pause
+  exit /b 1
 )
 
 set TIKTOK_USERNAME=tncfurkan72
