@@ -11,16 +11,33 @@ const __dirname = path.dirname(__filename);
 const PORT = Number(process.env.PORT || 3000);
 const TIKTOK_USERNAME = (process.env.TIKTOK_USERNAME || 'tncfurkan72').replace(/^@/, '');
 const RETRY_MS = 15000;
+const FOLLOW_REWARD_FILE = path.join(__dirname, '.follow-rewards.json');
 
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server, path: '/live' });
 
 const teamByUser = new Map();
+const likesByUser = new Map();
+const pendingRewards = new Map();
+let rewardedFollowers = new Set();
 let tiktok = null;
 let retryTimer = null;
 let connecting = false;
 let giftById = new Map();
+
+try {
+  const saved = JSON.parse(fs.readFileSync(FOLLOW_REWARD_FILE, 'utf8'));
+  if (Array.isArray(saved)) rewardedFollowers = new Set(saved.map(String));
+} catch {}
+
+function saveRewardedFollowers() {
+  try {
+    fs.writeFileSync(FOLLOW_REWARD_FILE, JSON.stringify([...rewardedFollowers], null, 2), 'utf8');
+  } catch (err) {
+    console.warn('[FOLLOW] reward history could not be saved:', err?.message || err);
+  }
+}
 
 function normalize(v = '') {
   return String(v)
@@ -40,8 +57,9 @@ function broadcast(payload) {
 function getUser(data) {
   const user = data?.user || {};
   const uniqueId = user.uniqueId || data?.uniqueId || '';
+  const stableId = user.userId || data?.userId || uniqueId || 'unknown';
   return {
-    id: uniqueId || user.userId || data?.userId || 'unknown',
+    id: String(stableId),
     name: uniqueId ? `@${uniqueId}` : (user.nickname || data?.nickname || 'Viewer')
   };
 }
@@ -63,6 +81,34 @@ function getGiftInfo(data) {
   const repeatCount = Math.max(1, Number(data?.repeatCount || 1));
   const repeatEnd = Boolean(data?.repeatEnd);
   return { name, coins, giftType, repeatCount, repeatEnd };
+}
+
+function addPending(userId, action, count, username) {
+  const current = pendingRewards.get(userId) || { username, actions: {} };
+  current.username = username || current.username;
+  current.actions[action] = (current.actions[action] || 0) + count;
+  pendingRewards.set(userId, current);
+}
+
+function rewardOrQueue(user, action, count = 1, reason = '') {
+  if (count <= 0) return;
+  const team = teamByUser.get(user.id);
+  if (!team) {
+    addPending(user.id, action, count, user.name);
+    broadcast({ type: 'notice', text: `${user.name} ödülü hazır; önce KIRMIZI veya MAVİ yaz.` });
+    return;
+  }
+  broadcast({ type: 'action', action, count, team, username: user.name, reason });
+}
+
+function flushPending(user) {
+  const pending = pendingRewards.get(user.id);
+  const team = teamByUser.get(user.id);
+  if (!pending || !team) return;
+  for (const [action, count] of Object.entries(pending.actions)) {
+    broadcast({ type: 'action', action, count, team, username: pending.username || user.name, reason: 'pending' });
+  }
+  pendingRewards.delete(user.id);
 }
 
 async function refreshGiftCatalog() {
@@ -105,9 +151,38 @@ async function connectTikTok() {
       if (['kirmizi', 'kırmızı', 'red'].includes(msg)) team = 'red';
       if (['mavi', 'blue'].includes(msg)) team = 'blue';
       if (!team) return;
-      teamByUser.set(String(user.id), team);
+      teamByUser.set(user.id, team);
       broadcast({ type: 'team', team, username: user.name, uniqueId: user.id });
+      flushPending(user);
       console.log(`[TEAM] ${user.name} -> ${team}`);
+    });
+
+    tiktok.on(WebcastEvent.FOLLOW, data => {
+      const user = getUser(data);
+      if (rewardedFollowers.has(user.id)) {
+        console.log(`[FOLLOW] ${user.name} already received the knight reward.`);
+        return;
+      }
+      rewardedFollowers.add(user.id);
+      saveRewardedFollowers();
+      rewardOrQueue(user, 'knight', 1, 'follow');
+      console.log(`[FOLLOW] ${user.name} -> 1 knight`);
+    });
+
+    tiktok.on(WebcastEvent.LIKE, data => {
+      const user = getUser(data);
+      const likeCount = Math.max(0, Number(data?.likeCount || 0));
+      if (!likeCount) return;
+
+      const before = likesByUser.get(user.id) || 0;
+      const after = before + likeCount;
+      likesByUser.set(user.id, after);
+
+      const earned = Math.floor(after / 200) - Math.floor(before / 200);
+      if (earned > 0) {
+        rewardOrQueue(user, 'soldier', earned, 'likes');
+        console.log(`[LIKE] ${user.name} total=${after} -> ${earned} soldier(s)`);
+      }
     });
 
     tiktok.on(WebcastEvent.GIFT, data => {
@@ -120,7 +195,7 @@ async function connectTikTok() {
       const giftNameKey = normalize(gift.name);
       if (giftNameKey === 'heart me' || giftNameKey === 'beni sev') return;
 
-      const team = teamByUser.get(String(user.id));
+      const team = teamByUser.get(user.id);
       if (!team) {
         broadcast({
           type: 'notice',
@@ -192,6 +267,13 @@ const injectedClient = `
     return true;
   }
 
+  function runAction(msg) {
+    const count = Math.max(1, Math.min(50, Number(msg.count || 1)));
+    for (let i = 0; i < count; i++) {
+      setTimeout(() => triggerAction(msg.action, msg.team, msg.username), i * 140);
+    }
+  }
+
   function runGift(msg) {
     const repeats = Math.max(1, Math.min(50, Number(msg.repeatCount || 1)));
     const action = COIN_ACTIONS[Number(msg.coins || 0)];
@@ -208,6 +290,7 @@ const injectedClient = `
 
   function process(msg) {
     if (msg.type === 'gift') return runGift(msg);
+    if (msg.type === 'action') return runAction(msg);
     if (msg.type === 'team') return showNotice((msg.team === 'red' ? '🔴 ' : '🔵 ') + msg.username + ' takıma katıldı!');
     if (msg.type === 'notice') return showNotice(msg.text);
     if (msg.type === 'status') {
@@ -245,7 +328,14 @@ const injectedClient = `
 </script>`;
 
 app.get('/health', (_req, res) => {
-  res.json({ ok: true, tiktok: `@${TIKTOK_USERNAME}`, connected: Boolean(tiktok?.state?.isConnected), teams: teamByUser.size });
+  res.json({
+    ok: true,
+    tiktok: `@${TIKTOK_USERNAME}`,
+    connected: Boolean(tiktok?.state?.isConnected),
+    teams: teamByUser.size,
+    followerRewards: rewardedFollowers.size,
+    likeUsers: likesByUser.size
+  });
 });
 
 app.get('/', (_req, res) => {
@@ -269,6 +359,8 @@ wss.on('connection', ws => {
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`\nLIVE Kingdom Battle: http://127.0.0.1:${PORT}`);
   console.log(`TikTok account: @${TIKTOK_USERNAME}`);
-  console.log('Viewers choose a team by writing KIRMIZI or MAVİ in chat.\n');
+  console.log('Viewers choose a team by writing KIRMIZI or MAVİ in chat.');
+  console.log('Follow = 1 knight (only once per TikTok account).');
+  console.log('Every 200 likes per viewer = 1 soldier.\n');
   connectTikTok();
 });
