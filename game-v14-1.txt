@@ -42,4 +42,4 @@ function sfx(name){if(!soundOn)return;const now=performance.now(),limits={slash:
 function toast(t){const e=$('toast');e.textContent=t;e.classList.add('show');clearTimeout(toast.t);toast.t=setTimeout(()=>e.classList.remove('show'),2600)}
 function addPoints(n,p){n=(n||'Anonim').slice(0,14);board[n]=(board[n]||0)+p;renderBoard()}
 function renderBoard(){const el=$('leaderboard'), arr=Object.entries(board).sort((a,b)=>b[1]-a[1]).slice(0,5);el.innerHTML=arr.length?arr.map((e,i)=>`<div class="row"><span>${i+1}.</span><span>${e[0]}</span><b>${e[1]}</b></div>`).join(''):'<div style="color:var(--muted)">Henüz oyuncu yok</div>'}
-function updateHud(){ $('redHpBar').style.width=(state.redHp/MAX_HP*100)+'%'; $('blueHpBar').style.width=(state.blueHp/MAX_HP*100)+'%'; $('redHpText').textContent=(state.redHp/1000).toFixed(1)
+function updateHud(){ $('redHpBar').style.width=(state.redHp/MAX_HP*100)+'%'; $('blueHpBar').style.width=(state.blueHp/MAX_HP*100)+'%'; $('redHpText').textContent=(state.redHp/1000).toFixed(1
