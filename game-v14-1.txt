@@ -1,0 +1,45 @@
+
+(()=>{
+const $=id=>document.getElementById(id), canvas=$("game"), ctx=canvas.getContext('2d');
+const W=canvas.width,H=canvas.height,GROUND=830,MAX_HP=100000;
+const state={redHp:MAX_HP,blueHp:MAX_HP,redScore:0,blueScore:0,seconds:1800,battleNo:1,ended:false,units:[],projectiles:[],particles:[],bursts:[],effects:[],attacks:[],boss:null,shake:0,last:performance.now(),auto:0};
+const names=['Furkan1903','Ahmet34','Can','Arda','Atlas','Efe','Mert','Burak','Kaan','Deniz'];
+const board={};
+const DEF={soldier:{hp:120,atk:9,speed:58,range:35,size:1,val:10,kind:'melee'},knight:{hp:280,atk:19,speed:47,range:38,size:1.1,val:24,kind:'melee'},archer:{hp:100,atk:13,speed:52,range:180,size:1,val:18,kind:'ranged',reload:.9},giant:{hp:720,atk:34,speed:27,range:52,size:1.35,val:46,kind:'melee'},dragon:{hp:900,atk:24,speed:55,range:210,size:1.4,val:80,kind:'ranged',reload:.65,flying:true,projectile:'fire'},hero:{hp:860,atk:42,speed:66,range:245,size:1.35,val:92,kind:'ranged',reload:.72,flying:true,projectile:'laser'},wizard:{hp:360,atk:34,speed:44,range:240,size:1.05,val:70,kind:'ranged',reload:.95,projectile:'lightning'},iceMage:{hp:430,atk:30,speed:42,range:245,size:1.08,val:76,kind:'ranged',reload:.88,projectile:'ice'},stormGod:{hp:690,atk:58,speed:58,range:270,size:1.28,val:105,kind:'ranged',reload:.82,flying:true,projectile:'thunder'},ninja:{hp:270,atk:38,speed:94,range:44,size:.95,val:62,kind:'melee',reload:.42},mech:{hp:1120,atk:64,speed:34,range:255,size:1.5,val:118,kind:'ranged',reload:1.08,projectile:'plasma'},tank:{hp:1450,atk:105,speed:24,range:290,size:1.65,val:130,kind:'ranged',reload:1.35,projectile:'shell'}};
+function rand(a,b){return Math.random()*(b-a)+a} function pick(a){return a[Math.floor(Math.random()*a.length)]} function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
+function rr(x,y,w,h,r,fill=true){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);if(fill)ctx.fill()}
+let audioCtx=null,audioMaster=null,soundOn=false;const sfxLast={};
+function ensureAudio(){const AC=window.AudioContext||window.webkitAudioContext;if(!AC)return null;if(!audioCtx){audioCtx=new AC();const comp=audioCtx.createDynamicsCompressor();comp.threshold.value=-20;comp.knee.value=18;comp.ratio.value=5;comp.attack.value=.004;comp.release.value=.18;audioMaster=audioCtx.createGain();audioMaster.gain.value=.52;audioMaster.connect(comp);comp.connect(audioCtx.destination);}if(audioCtx.state==='suspended')audioCtx.resume();return audioCtx}
+function tone(freq,dur=.08,type='sine',gain=.018,slide=1){if(!soundOn)return;const ac=ensureAudio();if(!ac)return;const t=ac.currentTime,o=ac.createOscillator(),g=ac.createGain();o.type=type;o.frequency.setValueAtTime(freq,t);o.frequency.exponentialRampToValueAtTime(Math.max(28,freq*slide),t+dur);g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(gain,t+.012);g.gain.exponentialRampToValueAtTime(.0001,t+dur);o.connect(g);g.connect(audioMaster||ac.destination);o.start(t);o.stop(t+dur+.03)}
+function noiseBand(dur=.12,gain=.018,freq=700,type='lowpass',q=.7){if(!soundOn)return;const ac=ensureAudio();if(!ac)return;const buffer=ac.createBuffer(1,Math.max(1,Math.floor(ac.sampleRate*dur)),ac.sampleRate),data=buffer.getChannelData(0);for(let i=0;i<data.length;i++){const env=1-i/data.length;data[i]=(Math.random()*2-1)*env*env;}const src=ac.createBufferSource(),filter=ac.createBiquadFilter(),g=ac.createGain();src.buffer=buffer;filter.type=type;filter.frequency.value=freq;filter.Q.value=q;g.gain.setValueAtTime(gain,ac.currentTime);g.gain.exponentialRampToValueAtTime(.0001,ac.currentTime+dur);src.connect(filter);filter.connect(g);g.connect(audioMaster||ac.destination);src.start()}
+function noise(dur=.12,gain=.018){noiseBand(dur,gain,720,'lowpass',.65)}
+function boom(power=.026,dur=.28){tone(74,dur,'sine',power,.46);noiseBand(dur*.72,power*.8,260,'lowpass',.5)}
+function whoosh(gain=.012,dur=.1){noiseBand(dur,gain,1200,'bandpass',.9)}
+function crack(gain=.02){noiseBand(.075,gain,1900,'highpass',.5);tone(180,.09,'triangle',gain*.45,.7)}
+function sfx(name){if(!soundOn)return;const now=performance.now(),limits={slash:85,arrow:95,hit:80,castle:180,laser:105,lightning:140,plasma:140,dash:150,tank:260,explosion:180,dragon:650,meteor:500,boss:800,nukeTick:650,thunder:220,ice:170};const lim=limits[name]||0;if(lim&&now-(sfxLast[name]||0)<lim)return;sfxLast[name]=now;
+ if(name==='slash'){whoosh(.011,.075);tone(165,.055,'triangle',.008,.78)}
+ else if(name==='arrow'){whoosh(.008,.07);tone(510,.045,'sine',.005,.72)}
+ else if(name==='hit'){noiseBand(.055,.009,520,'bandpass',.8)}
+ else if(name==='dragon'){tone(118,.34,'sine',.028,.62);noiseBand(.28,.014,360,'bandpass',.65);setTimeout(()=>tone(82,.28,'sine',.018,.7),95)}
+ else if(name==='laser'){whoosh(.007,.055);tone(390,.075,'triangle',.009,1.65)}
+ else if(name==='lightning'||name==='thunder'){crack(name==='thunder'?.026:.018);setTimeout(()=>boom(name==='thunder'?.023:.012,.24),28)}
+ else if(name==='ice'){noiseBand(.13,.011,2600,'highpass',.9);tone(620,.11,'sine',.007,.68)}
+ else if(name==='plasma'){tone(150,.14,'sine',.014,2.15);whoosh(.008,.09)}
+ else if(name==='dash'){whoosh(.014,.12)}
+ else if(name==='meteor'){whoosh(.018,.25);setTimeout(()=>boom(.036,.34),155)}
+ else if(name==='boss'){boom(.035,.38);setTimeout(()=>boom(.024,.3),95)}
+ else if(name==='castle'){boom(.014,.14);noiseBand(.1,.01,430,'bandpass',.8)}
+ else if(name==='tank'){boom(.034,.22);crack(.012)}
+ else if(name==='explosion'){boom(.032,.28);noiseBand(.18,.018,500,'lowpass',.55)}
+ else if(name==='landing'){boom(.026,.22);noiseBand(.14,.016,420,'lowpass',.55)}
+ else if(name==='nuke'){tone(110,.42,'sine',.016,.82);setTimeout(()=>tone(92,.42,'sine',.014,.78),430)}
+ else if(name==='nukeTick'){tone(250,.055,'sine',.008,.85)}
+ else if(name==='nukeBlast'){boom(.065,.95);setTimeout(()=>noiseBand(.75,.04,300,'lowpass',.45),65);setTimeout(()=>tone(36,.95,'sine',.035,.8),120)}
+ else if(name==='king'){tone(220,.18,'triangle',.012,1);setTimeout(()=>tone(330,.22,'triangle',.011,1),120)}
+ else if(name==='heal'){tone(330,.16,'sine',.007,1.22);setTimeout(()=>tone(440,.18,'sine',.006,1.14),100)}
+ else if(name==='mechEntry'){boom(.03,.26);noiseBand(.12,.011,1800,'highpass',.5)}
+}
+function toast(t){const e=$('toast');e.textContent=t;e.classList.add('show');clearTimeout(toast.t);toast.t=setTimeout(()=>e.classList.remove('show'),2600)}
+function addPoints(n,p){n=(n||'Anonim').slice(0,14);board[n]=(board[n]||0)+p;renderBoard()}
+function renderBoard(){const el=$('leaderboard'), arr=Object.entries(board).sort((a,b)=>b[1]-a[1]).slice(0,5);el.innerHTML=arr.length?arr.map((e,i)=>`<div class="row"><span>${i+1}.</span><span>${e[0]}</span><b>${e[1]}</b></div>`).join(''):'<div style="color:var(--muted)">Henüz oyuncu yok</div>'}
+function updateHud(){ $('redHpBar').style.width=(state.redHp/MAX_HP*100)+'%'; $('blueHpBar').style.width=(state.blueHp/MAX_HP*100)+'%'; $('redHpText').textContent=(state.redHp/1000).toFixed(1)
