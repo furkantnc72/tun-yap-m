@@ -23,8 +23,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Disable demo bots
+      - name: Disable demo bots and apply combat fixes
         run: node patch-live.mjs
+      - name: Add harmless ambient LIVE motion
+        run: node patch-ambient.mjs
       - name: Setup Pages
         uses: actions/configure-pages@v5
         with:
