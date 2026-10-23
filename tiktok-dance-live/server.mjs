@@ -30,9 +30,9 @@ async function getMusic(){
 }
 
 app.use(express.static('public',{index:false,maxAge:'1h'}));
-app.get('/',async(_req,res)=>{try{const html=await fs.readFile(indexPath,'utf8');res.set('Cache-Control','no-store');res.type('html').send(html.replace('</body>','<script src="/panel-upgrade.js?v=8"></script><script src="/voice-upgrade.js?v=8"></script></body>'))}catch(e){console.error('index-error',e);res.status(500).send('Site yüklenemedi')}});
-app.get('/background-music.ogg',async(_req,res)=>{try{const b=await getMusic();res.set({'Content-Type':'audio/ogg','Content-Length':String(b.length),'Cache-Control':'public, max-age=86400'});res.send(b)}catch(e){console.error('music-error',e);res.status(500).end()}});
-app.get('/health',async(_req,res)=>{let musicBytes=0;try{musicBytes=(await getMusic()).length}catch{}res.json({ok:true,voiceMode:'queued-neural-v8',voiceState,musicBytes,time:new Date().toISOString()})});
+app.get('/',async(_req,res)=>{try{const html=await fs.readFile(indexPath,'utf8');res.set('Cache-Control','no-store');res.type('html').send(html.replace('</body>','<script src="/panel-upgrade.js?v=9"></script><script src="/voice-upgrade.js?v=9"></script></body>'))}catch(e){console.error('index-error',e);res.status(500).send('Site yüklenemedi')}});
+app.get('/background-music.ogg',async(_req,res)=>{try{const b=await getMusic();res.set({'Content-Type':'audio/ogg','Content-Length':String(b.length),'Cache-Control':'no-store'});res.send(b)}catch(e){console.error('music-error',e);res.status(500).end()}});
+app.get('/health',async(_req,res)=>{let musicBytes=0;try{musicBytes=(await getMusic()).length}catch{}res.json({ok:true,voiceMode:'queued-neural-v9',voiceState,musicBytes,time:new Date().toISOString()})});
 
 function cleanVoiceText(v=''){return String(v).replace(/[_.]+/g,' ').replace(/[^\p{L}\p{N} çğıöşüÇĞİÖŞÜ!?,.'-]/gu,'').replace(/\s+/g,' ').trim().slice(0,120)}
 async function synthOnce(text,l){
