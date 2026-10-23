@@ -9,11 +9,14 @@ import { EdgeTTS } from 'node-edge-tts';
 import { TikTokLiveConnection, WebcastEvent } from 'tiktok-live-connector';
 
 const app=express(),server=http.createServer(app),io=new Server(server,{cors:{origin:'*'}});
+const wait=ms=>new Promise(r=>setTimeout(r,ms));
 const voices={
-  tr:new EdgeTTS({voice:'tr-TR-AhmetNeural',lang:'tr-TR',outputFormat:'audio-24khz-96kbitrate-mono-mp3',pitch:'-2%',rate:'+2%',volume:'+30%',timeout:15000}),
-  en:new EdgeTTS({voice:'en-US-GuyNeural',lang:'en-US',outputFormat:'audio-24khz-96kbitrate-mono-mp3',pitch:'-2%',rate:'+2%',volume:'+30%',timeout:15000})
+  tr:new EdgeTTS({voice:'tr-TR-AhmetNeural',lang:'tr-TR',outputFormat:'audio-24khz-96kbitrate-mono-mp3',pitch:'-4%',rate:'-2%',volume:'+35%',timeout:18000}),
+  en:new EdgeTTS({voice:'en-US-GuyNeural',lang:'en-US',outputFormat:'audio-24khz-96kbitrate-mono-mp3',pitch:'-4%',rate:'-2%',volume:'+35%',timeout:18000})
 };
 const voiceCache=new Map(),voiceInflight=new Map();
+let ttsTail=Promise.resolve(),lastTtsAt=0;
+const voiceState={tr:'idle',en:'idle'};
 const indexPath=path.join(process.cwd(),'public','index.html');
 const musicDataPath=path.join(process.cwd(),'public','bahar-loop.b64');
 let musicBuffer=null;
@@ -27,18 +30,43 @@ async function getMusic(){
 }
 
 app.use(express.static('public',{index:false,maxAge:'1h'}));
-app.get('/',async(_req,res)=>{try{const html=await fs.readFile(indexPath,'utf8');res.type('html').send(html.replace('</body>','<script src="/panel-upgrade.js?v=7"></script><script src="/voice-upgrade.js?v=7"></script></body>'))}catch(e){console.error('index-error',e);res.status(500).send('Site yüklenemedi')}});
+app.get('/',async(_req,res)=>{try{const html=await fs.readFile(indexPath,'utf8');res.set('Cache-Control','no-store');res.type('html').send(html.replace('</body>','<script src="/panel-upgrade.js?v=8"></script><script src="/voice-upgrade.js?v=8"></script></body>'))}catch(e){console.error('index-error',e);res.status(500).send('Site yüklenemedi')}});
 app.get('/background-music.ogg',async(_req,res)=>{try{const b=await getMusic();res.set({'Content-Type':'audio/ogg','Content-Length':String(b.length),'Cache-Control':'public, max-age=86400'});res.send(b)}catch(e){console.error('music-error',e);res.status(500).end()}});
-app.get('/health',async(_req,res)=>{let musicBytes=0;try{musicBytes=(await getMusic()).length}catch{}res.json({ok:true,voiceMode:'natural-v7',musicBytes,time:new Date().toISOString()})});
+app.get('/health',async(_req,res)=>{let musicBytes=0;try{musicBytes=(await getMusic()).length}catch{}res.json({ok:true,voiceMode:'queued-neural-v8',voiceState,musicBytes,time:new Date().toISOString()})});
 
 function cleanVoiceText(v=''){return String(v).replace(/[_.]+/g,' ').replace(/[^\p{L}\p{N} çğıöşüÇĞİÖŞÜ!?,.'-]/gu,'').replace(/\s+/g,' ').trim().slice(0,120)}
+async function synthOnce(text,l){
+  const tmp=path.join(os.tmpdir(),`voice-${crypto.randomUUID()}.mp3`);
+  try{
+    const since=Date.now()-lastTtsAt;if(since<900)await wait(900-since);
+    let lastErr;
+    for(let attempt=0;attempt<5;attempt++){
+      try{
+        await voices[l].ttsPromise(text,tmp);
+        lastTtsAt=Date.now();
+        const b=await fs.readFile(tmp);
+        if(!b.length)throw new Error('empty voice');
+        return b;
+      }catch(e){
+        lastErr=e;
+        const is429=/429|too many requests/i.test(String(e?.message||e));
+        if(!is429||attempt===4)throw e;
+        await wait([1400,2400,4000,6500,9000][attempt]);
+      }
+    }
+    throw lastErr;
+  }finally{fs.unlink(tmp).catch(()=>{})}
+}
 async function synthesizeText(text,lang='tr'){
   const l=lang==='en'?'en':'tr',key=l+':'+text.toLowerCase();
-  if(voiceCache.has(key))return voiceCache.get(key);if(voiceInflight.has(key))return voiceInflight.get(key);
-  const job=(async()=>{const tmp=path.join(os.tmpdir(),`voice-${crypto.randomUUID()}.mp3`);try{await voices[l].ttsPromise(text,tmp);const b=await fs.readFile(tmp);if(!b.length)throw new Error('empty voice');if(voiceCache.size>300)voiceCache.delete(voiceCache.keys().next().value);voiceCache.set(key,b);return b}finally{fs.unlink(tmp).catch(()=>{})}})();
+  if(voiceCache.has(key))return voiceCache.get(key);
+  if(voiceInflight.has(key))return voiceInflight.get(key);
+  const run=ttsTail.catch(()=>{}).then(()=>synthOnce(text,l));
+  ttsTail=run.then(()=>undefined,()=>undefined);
+  const job=run.then(b=>{if(voiceCache.size>300)voiceCache.delete(voiceCache.keys().next().value);voiceCache.set(key,b);return b});
   voiceInflight.set(key,job);try{return await job}finally{voiceInflight.delete(key)}
 }
-app.get('/voice',async(req,res)=>{let text=cleanVoiceText(req.query?.text??req.query?.name),lang=req.query?.lang==='en'?'en':'tr';if(!text)return res.status(400).end();if(!/[!?.]$/.test(text))text+='!';try{const b=await synthesizeText(text,lang);res.set({'Content-Type':'audio/mpeg','Content-Length':String(b.length),'Cache-Control':'public, max-age=86400'});res.send(b)}catch(e){console.error('voice-error',e);res.status(503).end()}});
+app.get('/voice',async(req,res)=>{let text=cleanVoiceText(req.query?.text??req.query?.name),lang=req.query?.lang==='en'?'en':'tr';if(!text)return res.status(400).end();if(!/[!?.]$/.test(text))text+='!';try{const b=await synthesizeText(text,lang);res.set({'Content-Type':'audio/mpeg','Content-Length':String(b.length),'Cache-Control':'public, max-age=86400'});res.send(b)}catch(e){console.error('voice-error',lang,text,e);res.status(503).end()}});
 
 let liveConnection=null,activeUsername=null,connecting=false,reconnectTimer=null;
 function normalizeUsername(v=''){return String(v).trim().replace(/^https?:\/\/(www\.)?tiktok\.com\/@/i,'').replace(/\/live.*$/i,'').replace(/^@/,'').replace(/[^a-zA-Z0-9._-]/g,'').slice(0,64)}
@@ -65,6 +93,12 @@ const PORT=Number(process.env.PORT||3000);
 server.listen(PORT,'0.0.0.0',()=>{
   console.log(`TikTok Dance Live running on http://0.0.0.0:${PORT}`);
   getMusic().then(b=>console.log('MUSIC READY',b.length,'bytes')).catch(e=>console.error('MUSIC WARMUP FAIL',e));
-  synthesizeText('Teşekkürler!','tr').then(b=>console.log('TR VOICE READY',b.length,'bytes')).catch(e=>console.error('TR VOICE WARMUP FAIL',e));
-  synthesizeText('Thank you!','en').then(b=>console.log('EN VOICE READY',b.length,'bytes')).catch(e=>console.error('EN VOICE WARMUP FAIL',e));
+  (async()=>{
+    await wait(2200);
+    voiceState.tr='warming';
+    try{const b=await synthesizeText('Teşekkürler!','tr');voiceState.tr='ready';console.log('TR VOICE READY',b.length,'bytes')}catch(e){voiceState.tr='retry-on-demand';console.error('TR VOICE WARMUP FAIL',e)}
+    await wait(1300);
+    voiceState.en='warming';
+    try{const b=await synthesizeText('Thank you!','en');voiceState.en='ready';console.log('EN VOICE READY',b.length,'bytes')}catch(e){voiceState.en='retry-on-demand';console.error('EN VOICE WARMUP FAIL',e)}
+  })();
 });
