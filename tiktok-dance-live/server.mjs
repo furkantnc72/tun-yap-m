@@ -23,8 +23,18 @@ const neuralVoice = new EdgeTTS({
 });
 const voiceCache = new Map();
 const voiceInflight = new Map();
+const indexPath = path.join(process.cwd(), 'public', 'index.html');
 
-app.use(express.static('public'));
+app.use(express.static('public', { index: false }));
+app.get('/', async (_req, res) => {
+  try {
+    const html = await fs.readFile(indexPath, 'utf8');
+    res.type('html').send(html.replace('</body>', '<script src="/voice-upgrade.js"></script></body>'));
+  } catch (error) {
+    console.error('index-error', error);
+    res.status(500).send('Site yüklenemedi');
+  }
+});
 app.get('/health', (_req, res) => res.json({ ok: true, voice: 'tr-TR-AhmetNeural', time: new Date().toISOString() }));
 
 function cleanVoiceText(value = '') {
