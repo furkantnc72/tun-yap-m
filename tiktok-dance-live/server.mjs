@@ -12,15 +12,16 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
 
-const neuralVoice = new EdgeTTS({
-  voice: 'tr-TR-AhmetNeural',
-  lang: 'tr-TR',
-  outputFormat: 'audio-24khz-96kbitrate-mono-mp3',
-  pitch: '-7%',
-  rate: '+16%',
-  volume: '+20%',
-  timeout: 12000
-});
+const voices = {
+  tr: new EdgeTTS({
+    voice: 'tr-TR-AhmetNeural', lang: 'tr-TR',
+    outputFormat: 'audio-24khz-96kbitrate-mono-mp3', pitch: '-7%', rate: '+16%', volume: '+20%', timeout: 12000
+  }),
+  en: new EdgeTTS({
+    voice: 'en-US-GuyNeural', lang: 'en-US',
+    outputFormat: 'audio-24khz-96kbitrate-mono-mp3', pitch: '-5%', rate: '+14%', volume: '+20%', timeout: 12000
+  })
+};
 const voiceCache = new Map();
 const voiceInflight = new Map();
 const indexPath = path.join(process.cwd(), 'public', 'index.html');
@@ -35,35 +36,34 @@ app.get('/', async (_req, res) => {
     res.status(500).send('Site yüklenemedi');
   }
 });
-app.get('/health', (_req, res) => res.json({ ok: true, voice: 'tr-TR-AhmetNeural', time: new Date().toISOString() }));
+app.get('/health', (_req, res) => res.json({ ok: true, voices: ['tr-TR-AhmetNeural','en-US-GuyNeural'], time: new Date().toISOString() }));
 
 function cleanVoiceText(value = '') {
   return String(value)
     .replace(/[_.]+/g, ' ')
-    .replace(/[^\p{L}\p{N} çğıöşüÇĞİÖŞÜ!?,.-]/gu, '')
+    .replace(/[^\p{L}\p{N} çğıöşüÇĞİÖŞÜ!?,.'-]/gu, '')
     .replace(/\s+/g, ' ')
     .trim()
-    .slice(0, 90);
+    .slice(0, 110);
 }
 
-async function synthesizeText(text) {
-  const key = text.toLocaleLowerCase('tr-TR');
+async function synthesizeText(text, lang = 'tr') {
+  const useLang = lang === 'en' ? 'en' : 'tr';
+  const key = `${useLang}:${text.toLocaleLowerCase(useLang === 'tr' ? 'tr-TR' : 'en-US')}`;
   if (voiceCache.has(key)) return voiceCache.get(key);
   if (voiceInflight.has(key)) return voiceInflight.get(key);
-
   const job = (async () => {
     const tmp = path.join(os.tmpdir(), `dance-voice-${crypto.randomUUID()}.mp3`);
     try {
-      await neuralVoice.ttsPromise(text, tmp);
+      await voices[useLang].ttsPromise(text, tmp);
       const audio = await fs.readFile(tmp);
-      if (voiceCache.size >= 220) voiceCache.delete(voiceCache.keys().next().value);
+      if (voiceCache.size >= 320) voiceCache.delete(voiceCache.keys().next().value);
       voiceCache.set(key, audio);
       return audio;
     } finally {
       fs.unlink(tmp).catch(() => {});
     }
   })();
-
   voiceInflight.set(key, job);
   try { return await job; }
   finally { voiceInflight.delete(key); }
@@ -72,14 +72,15 @@ async function synthesizeText(text) {
 app.get('/voice', async (req, res) => {
   const requested = req.query?.text ?? req.query?.name;
   let text = cleanVoiceText(requested);
+  const lang = req.query?.lang === 'en' ? 'en' : 'tr';
   if (!text) return res.status(400).json({ ok: false, error: 'text gerekli' });
   if (!/[!?.]$/.test(text)) text += '!';
   try {
-    const audio = await synthesizeText(text);
+    const audio = await synthesizeText(text, lang);
     res.set({
       'Content-Type': 'audio/mpeg',
       'Cache-Control': 'public, max-age=86400, stale-while-revalidate=604800',
-      'X-Voice-Engine': 'tr-TR-AhmetNeural'
+      'X-Voice-Engine': lang === 'en' ? 'en-US-GuyNeural' : 'tr-TR-AhmetNeural'
     });
     res.send(audio);
   } catch (error) {
@@ -187,7 +188,7 @@ io.on('connection', (socket) => {
     const diamonds = Math.max(1, Math.min(100000, Number(payload.diamonds || 1)));
     io.emit('gift', {
       id: `${Date.now()}-test`, displayName: safeText(payload.displayName, 'Furkan'), uniqueId: safeText(payload.uniqueId, 'test_user'),
-      giftName: safeText(payload.giftName, diamonds >= 500 ? 'Aslan' : diamonds >= 100 ? 'Kuğu' : diamonds >= 10 ? 'Parfüm' : 'Gül'),
+      giftName: safeText(payload.giftName, diamonds >= 5000 ? 'TikTok Universe' : diamonds >= 1000 ? 'Lion' : diamonds >= 500 ? 'Swan' : diamonds >= 100 ? 'Perfume' : diamonds >= 10 ? 'Heart Me' : 'Rose'),
       giftId: 'test', repeatCount: Math.max(1, Number(payload.repeatCount || 1)), diamonds, diamondsPerGift: diamonds, avatar: ''
     });
     ack({ ok: true });
