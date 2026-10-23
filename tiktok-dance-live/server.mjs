@@ -1,14 +1,80 @@
 import express from 'express';
 import http from 'http';
+import { promises as fs } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import crypto from 'node:crypto';
 import { Server } from 'socket.io';
+import { EdgeTTS } from 'node-edge-tts';
 import { TikTokLiveConnection, WebcastEvent } from 'tiktok-live-connector';
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
 
+const neuralVoice = new EdgeTTS({
+  voice: 'tr-TR-AhmetNeural',
+  lang: 'tr-TR',
+  outputFormat: 'audio-24khz-96kbitrate-mono-mp3',
+  pitch: '-7%',
+  rate: '+18%',
+  volume: '+20%',
+  timeout: 12000
+});
+const voiceCache = new Map();
+const voiceInflight = new Map();
+
 app.use(express.static('public'));
-app.get('/health', (_req, res) => res.json({ ok: true, time: new Date().toISOString() }));
+app.get('/health', (_req, res) => res.json({ ok: true, voice: 'tr-TR-AhmetNeural', time: new Date().toISOString() }));
+
+function cleanVoiceText(value = '') {
+  return String(value)
+    .replace(/[_.]+/g, ' ')
+    .replace(/[^\p{L}\p{N} çğıöşüÇĞİÖŞÜ-]/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 32);
+}
+
+async function synthesizeName(name) {
+  const key = name.toLocaleLowerCase('tr-TR');
+  if (voiceCache.has(key)) return voiceCache.get(key);
+  if (voiceInflight.has(key)) return voiceInflight.get(key);
+
+  const job = (async () => {
+    const tmp = path.join(os.tmpdir(), `dance-voice-${crypto.randomUUID()}.mp3`);
+    try {
+      await neuralVoice.ttsPromise(`${name}!`, tmp);
+      const audio = await fs.readFile(tmp);
+      if (voiceCache.size >= 160) voiceCache.delete(voiceCache.keys().next().value);
+      voiceCache.set(key, audio);
+      return audio;
+    } finally {
+      fs.unlink(tmp).catch(() => {});
+    }
+  })();
+
+  voiceInflight.set(key, job);
+  try { return await job; }
+  finally { voiceInflight.delete(key); }
+}
+
+app.get('/voice', async (req, res) => {
+  const name = cleanVoiceText(req.query?.name);
+  if (!name) return res.status(400).json({ ok: false, error: 'name gerekli' });
+  try {
+    const audio = await synthesizeName(name);
+    res.set({
+      'Content-Type': 'audio/mpeg',
+      'Cache-Control': 'public, max-age=86400, stale-while-revalidate=604800',
+      'X-Voice-Engine': 'tr-TR-AhmetNeural'
+    });
+    res.send(audio);
+  } catch (error) {
+    console.error('voice-error', error);
+    res.status(503).json({ ok: false, error: 'Ses üretilemedi' });
+  }
+});
 
 let liveConnection = null;
 let activeUsername = null;
