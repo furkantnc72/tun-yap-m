@@ -17,7 +17,7 @@ const neuralVoice = new EdgeTTS({
   lang: 'tr-TR',
   outputFormat: 'audio-24khz-96kbitrate-mono-mp3',
   pitch: '-7%',
-  rate: '+18%',
+  rate: '+16%',
   volume: '+20%',
   timeout: 12000
 });
@@ -40,23 +40,23 @@ app.get('/health', (_req, res) => res.json({ ok: true, voice: 'tr-TR-AhmetNeural
 function cleanVoiceText(value = '') {
   return String(value)
     .replace(/[_.]+/g, ' ')
-    .replace(/[^\p{L}\p{N} çğıöşüÇĞİÖŞÜ-]/gu, '')
+    .replace(/[^\p{L}\p{N} çğıöşüÇĞİÖŞÜ!?,.-]/gu, '')
     .replace(/\s+/g, ' ')
     .trim()
-    .slice(0, 32);
+    .slice(0, 90);
 }
 
-async function synthesizeName(name) {
-  const key = name.toLocaleLowerCase('tr-TR');
+async function synthesizeText(text) {
+  const key = text.toLocaleLowerCase('tr-TR');
   if (voiceCache.has(key)) return voiceCache.get(key);
   if (voiceInflight.has(key)) return voiceInflight.get(key);
 
   const job = (async () => {
     const tmp = path.join(os.tmpdir(), `dance-voice-${crypto.randomUUID()}.mp3`);
     try {
-      await neuralVoice.ttsPromise(`${name}!`, tmp);
+      await neuralVoice.ttsPromise(text, tmp);
       const audio = await fs.readFile(tmp);
-      if (voiceCache.size >= 160) voiceCache.delete(voiceCache.keys().next().value);
+      if (voiceCache.size >= 220) voiceCache.delete(voiceCache.keys().next().value);
       voiceCache.set(key, audio);
       return audio;
     } finally {
@@ -70,10 +70,12 @@ async function synthesizeName(name) {
 }
 
 app.get('/voice', async (req, res) => {
-  const name = cleanVoiceText(req.query?.name);
-  if (!name) return res.status(400).json({ ok: false, error: 'name gerekli' });
+  const requested = req.query?.text ?? req.query?.name;
+  let text = cleanVoiceText(requested);
+  if (!text) return res.status(400).json({ ok: false, error: 'text gerekli' });
+  if (!/[!?.]$/.test(text)) text += '!';
   try {
-    const audio = await synthesizeName(name);
+    const audio = await synthesizeText(text);
     res.set({
       'Content-Type': 'audio/mpeg',
       'Cache-Control': 'public, max-age=86400, stale-while-revalidate=604800',
