@@ -13,187 +13,44 @@ const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
 
 const voices = {
-  tr: new EdgeTTS({
-    voice: 'tr-TR-AhmetNeural', lang: 'tr-TR',
-    outputFormat: 'audio-24khz-96kbitrate-mono-mp3', pitch: '-7%', rate: '+16%', volume: '+20%', timeout: 12000
-  }),
-  en: new EdgeTTS({
-    voice: 'en-US-GuyNeural', lang: 'en-US',
-    outputFormat: 'audio-24khz-96kbitrate-mono-mp3', pitch: '-5%', rate: '+14%', volume: '+20%', timeout: 12000
-  })
+  tr: new EdgeTTS({ voice:'tr-TR-AhmetNeural',lang:'tr-TR',outputFormat:'audio-24khz-96kbitrate-mono-mp3',pitch:'-7%',rate:'+16%',volume:'+20%',timeout:12000 }),
+  en: new EdgeTTS({ voice:'en-US-GuyNeural',lang:'en-US',outputFormat:'audio-24khz-96kbitrate-mono-mp3',pitch:'-5%',rate:'+14%',volume:'+20%',timeout:12000 })
 };
-const voiceCache = new Map();
-const voiceInflight = new Map();
-const indexPath = path.join(process.cwd(), 'public', 'index.html');
+const voiceCache=new Map(),voiceInflight=new Map();
+const indexPath=path.join(process.cwd(),'public','index.html');
 
-app.use(express.static('public', { index: false }));
-app.get('/', async (_req, res) => {
-  try {
-    const html = await fs.readFile(indexPath, 'utf8');
-    res.type('html').send(html.replace('</body>', '<script src="/voice-upgrade.js"></script></body>'));
-  } catch (error) {
-    console.error('index-error', error);
-    res.status(500).send('Site yüklenemedi');
-  }
-});
-app.get('/health', (_req, res) => res.json({ ok: true, voices: ['tr-TR-AhmetNeural','en-US-GuyNeural'], time: new Date().toISOString() }));
+app.use(express.static('public',{index:false}));
+app.get('/',async(_req,res)=>{try{const html=await fs.readFile(indexPath,'utf8');res.type('html').send(html.replace('</body>','<script src="/voice-upgrade.js"></script></body>'))}catch(error){console.error('index-error',error);res.status(500).send('Site yüklenemedi')}});
+app.get('/health',(_req,res)=>res.json({ok:true,voices:['tr-TR-AhmetNeural','en-US-GuyNeural'],time:new Date().toISOString()}));
 
-function cleanVoiceText(value = '') {
-  return String(value)
-    .replace(/[_.]+/g, ' ')
-    .replace(/[^\p{L}\p{N} çğıöşüÇĞİÖŞÜ!?,.'-]/gu, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 110);
+function cleanVoiceText(value=''){return String(value).replace(/[_.]+/g,' ').replace(/[^\p{L}\p{N} çğıöşüÇĞİÖŞÜ!?,.'-]/gu,'').replace(/\s+/g,' ').trim().slice(0,110)}
+async function synthesizeText(text,lang='tr'){
+  const useLang=lang==='en'?'en':'tr';
+  const key=`${useLang}:${text.toLocaleLowerCase(useLang==='tr'?'tr-TR':'en-US')}`;
+  if(voiceCache.has(key))return voiceCache.get(key);if(voiceInflight.has(key))return voiceInflight.get(key);
+  const job=(async()=>{const tmp=path.join(os.tmpdir(),`dance-voice-${crypto.randomUUID()}.mp3`);try{await voices[useLang].ttsPromise(text,tmp);const audio=await fs.readFile(tmp);if(voiceCache.size>=320)voiceCache.delete(voiceCache.keys().next().value);voiceCache.set(key,audio);return audio}finally{fs.unlink(tmp).catch(()=>{})}})();
+  voiceInflight.set(key,job);try{return await job}finally{voiceInflight.delete(key)}
+}
+app.get('/voice',async(req,res)=>{let text=cleanVoiceText(req.query?.text??req.query?.name);const lang=req.query?.lang==='en'?'en':'tr';if(!text)return res.status(400).json({ok:false,error:'text gerekli'});if(!/[!?.]$/.test(text))text+='!';try{const audio=await synthesizeText(text,lang);res.set({'Content-Type':'audio/mpeg','Cache-Control':'public, max-age=86400, stale-while-revalidate=604800','X-Voice-Engine':lang==='en'?'en-US-GuyNeural':'tr-TR-AhmetNeural'});res.send(audio)}catch(error){console.error('voice-error',error);res.status(503).json({ok:false,error:'Ses üretilemedi'})}});
+
+let liveConnection=null,activeUsername=null,connecting=false,reconnectTimer=null;
+function normalizeUsername(value=''){return String(value).trim().replace(/^https?:\/\/(www\.)?tiktok\.com\/@/i,'').replace(/\/live.*$/i,'').replace(/^@/,'').replace(/[^a-zA-Z0-9._-]/g,'').slice(0,64)}
+function safeText(value,fallback=''){const text=String(value??fallback).replace(/[<>]/g,'').trim();return text.slice(0,80)||fallback}
+function emitStatus(status,message,extra={}){io.emit('tiktok-status',{status,message,username:activeUsername,...extra})}
+async function stopTikTok(reason='Bağlantı kapatıldı'){if(reconnectTimer){clearTimeout(reconnectTimer);reconnectTimer=null}const old=liveConnection;liveConnection=null;connecting=false;if(old){try{old.disconnect()}catch{}}emitStatus('disconnected',reason)}
+async function startTikTok(username){
+  const clean=normalizeUsername(username);if(!clean)throw new Error('Geçerli bir TikTok kullanıcı adı gir.');if(connecting)throw new Error('Bağlantı kuruluyor, birkaç saniye sonra tekrar dene.');if(liveConnection)await stopTikTok('Yeni hesaba geçiliyor…');activeUsername=clean;connecting=true;emitStatus('connecting',`@${clean} canlı yayınına bağlanılıyor…`);
+  const connection=new TikTokLiveConnection(clean,{processInitialData:false,enableExtendedGiftInfo:true,fetchRoomInfoOnConnect:true});liveConnection=connection;
+  connection.on(WebcastEvent.GIFT,event=>{try{if(event?.gift?.type===1&&Number(event?.repeatEnd)!==1)return;const repeatCount=Math.max(1,Number(event?.repeatCount||1));const giftName=safeText(event?.gift?.name||event?.extendedGiftInfo?.name||`Hediye #${event?.giftId??''}`,'Hediye');const diamondsPerGift=Math.max(0,Number(event?.gift?.diamondCount??event?.extendedGiftInfo?.diamondCount??0));const diamonds=diamondsPerGift*repeatCount;const displayName=safeText(event?.user?.nickname||event?.user?.displayId||event?.user?.uniqueId,'Misafir');const uniqueId=safeText(event?.user?.uniqueId||event?.user?.displayId||'','misafir');const avatar=event?.user?.profilePicture?.urls?.[0]||event?.user?.avatarThumb?.urlList?.[0]||'';io.emit('gift',{id:`${Date.now()}-${Math.random().toString(36).slice(2)}`,displayName,uniqueId,giftName,giftId:String(event?.giftId??''),repeatCount,diamonds,diamondsPerGift,avatar})}catch(error){console.error('gift-handler',error)}});
+  connection.on('disconnected',()=>{connecting=false;if(liveConnection!==connection)return;emitStatus('reconnecting',`@${clean} bağlantısı koptu; yeniden deneniyor…`);reconnectTimer=setTimeout(()=>{if(activeUsername===clean)startTikTok(clean).catch(err=>emitStatus('error',err.message))},5000)});connection.on('error',err=>emitStatus('error',err?.message||'TikTok bağlantı hatası'));
+  try{const state=await connection.connect();connecting=false;emitStatus('connected',`@${clean} bağlandı`,{roomId:String(state?.roomId??'')});return state}catch(error){connecting=false;if(liveConnection===connection)liveConnection=null;throw error}
 }
 
-async function synthesizeText(text, lang = 'tr') {
-  const useLang = lang === 'en' ? 'en' : 'tr';
-  const key = `${useLang}:${text.toLocaleLowerCase(useLang === 'tr' ? 'tr-TR' : 'en-US')}`;
-  if (voiceCache.has(key)) return voiceCache.get(key);
-  if (voiceInflight.has(key)) return voiceInflight.get(key);
-  const job = (async () => {
-    const tmp = path.join(os.tmpdir(), `dance-voice-${crypto.randomUUID()}.mp3`);
-    try {
-      await voices[useLang].ttsPromise(text, tmp);
-      const audio = await fs.readFile(tmp);
-      if (voiceCache.size >= 320) voiceCache.delete(voiceCache.keys().next().value);
-      voiceCache.set(key, audio);
-      return audio;
-    } finally {
-      fs.unlink(tmp).catch(() => {});
-    }
-  })();
-  voiceInflight.set(key, job);
-  try { return await job; }
-  finally { voiceInflight.delete(key); }
-}
-
-app.get('/voice', async (req, res) => {
-  const requested = req.query?.text ?? req.query?.name;
-  let text = cleanVoiceText(requested);
-  const lang = req.query?.lang === 'en' ? 'en' : 'tr';
-  if (!text) return res.status(400).json({ ok: false, error: 'text gerekli' });
-  if (!/[!?.]$/.test(text)) text += '!';
-  try {
-    const audio = await synthesizeText(text, lang);
-    res.set({
-      'Content-Type': 'audio/mpeg',
-      'Cache-Control': 'public, max-age=86400, stale-while-revalidate=604800',
-      'X-Voice-Engine': lang === 'en' ? 'en-US-GuyNeural' : 'tr-TR-AhmetNeural'
-    });
-    res.send(audio);
-  } catch (error) {
-    console.error('voice-error', error);
-    res.status(503).json({ ok: false, error: 'Ses üretilemedi' });
-  }
+io.on('connection',socket=>{
+  socket.emit('tiktok-status',{status:liveConnection?'connected':'disconnected',message:liveConnection?`@${activeUsername} bağlı`:'TikTok bağlı değil',username:activeUsername});
+  socket.on('connect-tiktok',async({username}={},ack=()=>{})=>{try{const state=await startTikTok(username);ack({ok:true,roomId:String(state?.roomId??'')})}catch(error){const message=error?.message||'TikTok bağlantısı kurulamadı';emitStatus('error',message);ack({ok:false,error:message})}});
+  socket.on('disconnect-tiktok',async(_payload,ack=()=>{})=>{await stopTikTok();activeUsername=null;ack({ok:true})});
+  socket.on('simulate-gift',(payload={},ack=()=>{})=>{const diamonds=Math.max(1,Math.min(100000,Number(payload.diamonds||1)));const fallback=diamonds>=5000?'TikTok Universe':diamonds>=1000?'Lion':diamonds>=500?'Swan':diamonds>=100?'Perfume':diamonds>=10?'Heart Me':'Rose';io.emit('gift',{id:`${Date.now()}-test`,displayName:safeText(payload.displayName,'Furkan'),uniqueId:safeText(payload.uniqueId,'test_user'),giftName:safeText(payload.giftName,fallback),giftId:'test',repeatCount:Math.max(1,Number(payload.repeatCount||1)),diamonds,diamondsPerGift:diamonds,avatar:''});ack({ok:true})});
 });
 
-let liveConnection = null;
-let activeUsername = null;
-let connecting = false;
-let reconnectTimer = null;
-
-function normalizeUsername(value = '') {
-  return String(value).trim().replace(/^https?:\/\/(www\.)?tiktok\.com\/@/i, '').replace(/\/live.*$/i, '').replace(/^@/, '').replace(/[^a-zA-Z0-9._-]/g, '').slice(0, 64);
-}
-function safeText(value, fallback = '') {
-  const text = String(value ?? fallback).replace(/[<>]/g, '').trim();
-  return text.slice(0, 80) || fallback;
-}
-function emitStatus(status, message, extra = {}) {
-  io.emit('tiktok-status', { status, message, username: activeUsername, ...extra });
-}
-async function stopTikTok(reason = 'Bağlantı kapatıldı') {
-  if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
-  const old = liveConnection;
-  liveConnection = null;
-  connecting = false;
-  if (old) { try { old.disconnect(); } catch {} }
-  emitStatus('disconnected', reason);
-}
-async function startTikTok(username) {
-  const clean = normalizeUsername(username);
-  if (!clean) throw new Error('Geçerli bir TikTok kullanıcı adı gir.');
-  if (connecting) throw new Error('Bağlantı kuruluyor, birkaç saniye sonra tekrar dene.');
-  if (liveConnection) await stopTikTok('Yeni hesaba geçiliyor…');
-  activeUsername = clean;
-  connecting = true;
-  emitStatus('connecting', `@${clean} canlı yayınına bağlanılıyor…`);
-
-  const connection = new TikTokLiveConnection(clean, {
-    processInitialData: false,
-    enableExtendedGiftInfo: true,
-    fetchRoomInfoOnConnect: true
-  });
-  liveConnection = connection;
-
-  connection.on(WebcastEvent.GIFT, (event) => {
-    try {
-      if (event?.gift?.type === 1 && Number(event?.repeatEnd) !== 1) return;
-      const repeatCount = Math.max(1, Number(event?.repeatCount || 1));
-      const giftName = safeText(event?.gift?.name || event?.extendedGiftInfo?.name || `Hediye #${event?.giftId ?? ''}`, 'Hediye');
-      const diamondsPerGift = Math.max(0, Number(event?.gift?.diamondCount ?? event?.extendedGiftInfo?.diamondCount ?? 0));
-      const diamonds = diamondsPerGift * repeatCount;
-      const displayName = safeText(event?.user?.nickname || event?.user?.displayId || event?.user?.uniqueId, 'Misafir');
-      const uniqueId = safeText(event?.user?.uniqueId || event?.user?.displayId || '', 'misafir');
-      const avatar = event?.user?.profilePicture?.urls?.[0] || event?.user?.avatarThumb?.urlList?.[0] || '';
-      io.emit('gift', { id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, displayName, uniqueId, giftName, giftId: String(event?.giftId ?? ''), repeatCount, diamonds, diamondsPerGift, avatar });
-    } catch (error) { console.error('gift-handler', error); }
-  });
-
-  connection.on('disconnected', () => {
-    connecting = false;
-    if (liveConnection !== connection) return;
-    emitStatus('reconnecting', `@${clean} bağlantısı koptu; yeniden deneniyor…`);
-    reconnectTimer = setTimeout(() => {
-      if (activeUsername === clean) startTikTok(clean).catch(err => emitStatus('error', err.message));
-    }, 5000);
-  });
-  connection.on('error', (err) => emitStatus('error', err?.message || 'TikTok bağlantı hatası'));
-
-  try {
-    const state = await connection.connect();
-    connecting = false;
-    emitStatus('connected', `@${clean} bağlandı`, { roomId: String(state?.roomId ?? '') });
-    return state;
-  } catch (error) {
-    connecting = false;
-    if (liveConnection === connection) liveConnection = null;
-    throw error;
-  }
-}
-
-io.on('connection', (socket) => {
-  socket.emit('tiktok-status', {
-    status: liveConnection ? 'connected' : 'disconnected',
-    message: liveConnection ? `@${activeUsername} bağlı` : 'TikTok bağlı değil',
-    username: activeUsername
-  });
-
-  socket.on('connect-tiktok', async ({ username } = {}, ack = () => {}) => {
-    try {
-      const state = await startTikTok(username);
-      ack({ ok: true, roomId: String(state?.roomId ?? '') });
-    } catch (error) {
-      const message = error?.message || 'TikTok bağlantısı kurulamadı';
-      emitStatus('error', message);
-      ack({ ok: false, error: message });
-    }
-  });
-  socket.on('disconnect-tiktok', async (_payload, ack = () => {}) => {
-    await stopTikTok(); activeUsername = null; ack({ ok: true });
-  });
-  socket.on('simulate-gift', (payload = {}, ack = () => {}) => {
-    const diamonds = Math.max(1, Math.min(100000, Number(payload.diamonds || 1)));
-    io.emit('gift', {
-      id: `${Date.now()}-test`, displayName: safeText(payload.displayName, 'Furkan'), uniqueId: safeText(payload.uniqueId, 'test_user'),
-      giftName: safeText(payload.giftName, diamonds >= 5000 ? 'TikTok Universe' : diamonds >= 1000 ? 'Lion' : diamonds >= 500 ? 'Swan' : diamonds >= 100 ? 'Perfume' : diamonds >= 10 ? 'Heart Me' : 'Rose'),
-      giftId: 'test', repeatCount: Math.max(1, Number(payload.repeatCount || 1)), diamonds, diamondsPerGift: diamonds, avatar: ''
-    });
-    ack({ ok: true });
-  });
-});
-
-const PORT = Number(process.env.PORT || 3000);
-server.listen(PORT, '0.0.0.0', () => console.log(`TikTok Dance Live running on http://0.0.0.0:${PORT}`));
+const PORT=Number(process.env.PORT||3000);server.listen(PORT,'0.0.0.0',()=>console.log(`TikTok Dance Live running on http://0.0.0.0:${PORT}`));
