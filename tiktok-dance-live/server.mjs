@@ -3,67 +3,69 @@ import http from 'http';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { Server } from 'socket.io';
-import { PiperNativeTTS, resolveModelPathFromOptions } from 'pipertts';
+import { Communicate } from 'edge-tts-universal';
 import { TikTokLiveConnection, WebcastEvent } from 'tiktok-live-connector';
 
 const app=express(),server=http.createServer(app),io=new Server(server,{cors:{origin:'*'}});
 const indexPath=path.join(process.cwd(),'public','index.html');
-const localEspeak=path.join(process.cwd(),'vendor','espeak','bin','espeak-ng-local');
-const nameCache=new Map();
+const phraseCache=new Map();
 let realReactionBuffer=null;
-let piper=null;
-let piperState='loading';
-let piperError='';
+let voiceState='loading';
+let voiceError='';
 
 function cleanName(v=''){
   return String(v).replace(/[_.]+/g,' ').replace(/[^\p{L}\p{N} çğıöşüÇĞİÖŞÜ'-]/gu,'').replace(/\s+/g,' ').trim().slice(0,45);
 }
+function clampVariant(v){return Math.max(0,Math.min(2,Number(v)||0))}
+function normalizeTier(v='low'){return ['low','mid','big','huge'].includes(v)?v:'low'}
+function phraseFor(name,tier,variant){
+  const sets={
+    low:[
+      `${name}, teşekkürler!`,
+      `${name}, sağ ol! Çok teşekkürler!`,
+      `${name}, thank you!`
+    ],
+    mid:[
+      `${name}! Çok teşekkürler, maşallah!`,
+      `${name}! Maşallah, teşekkür ederiz!`,
+      `${name}! Thank you, thank you!`
+    ],
+    big:[
+      `${name}! Maşallah! Çok teşekkür ederiz!`,
+      `${name}! Thank you so much! Maşallah!`,
+      `${name}! Helal olsun, çok teşekkürler!`
+    ],
+    huge:[
+      `${name}! Maşallah! Thank you, thank you! Çok teşekkür ederiz!`,
+      `${name}! Allah razı olsun! Maşallah, çok teşekkürler!`,
+      `${name}! Thank you so much! Maşallah! İyi ki varsın!`
+    ]
+  };
+  return sets[tier][variant];
+}
 
-const piperReady=(async()=>{
-  try{
-    console.log('PIPER loading Turkish voice model...');
-    await fs.access(localEspeak);
-    console.log('PIPER using local espeak',localEspeak);
-    const modelPath=await resolveModelPathFromOptions({
-      model:'tr_TR-dfki-medium',
-      modelsDir:path.join(process.cwd(),'models')
-    });
-    piper=await PiperNativeTTS.load({modelPath,espeakBinary:localEspeak});
-    const probe=await piper.synthesize('Furkan!',{
-      outputFormat:'wav',
-      lengthScale:.82,
-      noiseScale:.62,
-      noiseWScale:.78,
-      sentenceSilence:.02
-    });
-    if(!probe?.audio?.length)throw new Error('Piper probe returned empty audio');
-    piperState='ready';
-    console.log('PIPER NAME READY Furkan',probe.audio.length,'bytes');
-    return piper;
-  }catch(e){
-    piperState='error';
-    piperError=String(e?.message||e);
-    console.error('PIPER NAME FAIL',piperError);
-    return null;
-  }
-})();
-
-async function synthName(text){
-  const key=text.toLocaleLowerCase('tr-TR');
-  if(nameCache.has(key))return nameCache.get(key);
-  const engine=await piperReady;
-  if(!engine)throw new Error(piperError||'Piper name engine unavailable');
-  const result=await engine.synthesize(text+'!',{
-    outputFormat:'wav',
-    lengthScale:.82,
-    noiseScale:.62,
-    noiseWScale:.78,
-    sentenceSilence:.02
+async function synthNaturalPhrase(name,tier='low',variant=0){
+  tier=normalizeTier(tier);variant=clampVariant(variant);
+  const key=`${name.toLocaleLowerCase('tr-TR')}|${tier}|${variant}`;
+  if(phraseCache.has(key))return phraseCache.get(key);
+  const text=phraseFor(name,tier,variant);
+  const voice='tr-TR-AhmetNeural';
+  const communicate=new Communicate(text,{
+    voice,
+    rate:tier==='huge'?'+17%':tier==='big'?'+14%':'+11%',
+    volume:'+12%',
+    pitch:'-1Hz',
+    connectionTimeout:15000
   });
-  const audio=Buffer.from(result.audio);
-  if(audio.length<1500)throw new Error('Piper generated audio too small');
-  if(nameCache.size>250)nameCache.delete(nameCache.keys().next().value);
-  nameCache.set(key,audio);
+  const chunks=[];
+  for await(const chunk of communicate.stream()){
+    if(chunk?.type==='audio'&&chunk?.data)chunks.push(Buffer.from(chunk.data));
+  }
+  const audio=Buffer.concat(chunks);
+  if(audio.length<2500)throw new Error('Neural voice returned too little audio');
+  if(phraseCache.size>300)phraseCache.delete(phraseCache.keys().next().value);
+  phraseCache.set(key,audio);
+  console.log('HUMAN PHRASE OK',JSON.stringify(text),audio.length,'bytes');
   return audio;
 }
 
@@ -82,20 +84,22 @@ app.get('/',async(_req,res)=>{
   try{
     const html=await fs.readFile(indexPath,'utf8');
     res.set('Cache-Control','no-store');
-    res.type('html').send(html.replace('</body>','<script src="/panel-upgrade.js?v=18"></script><script src="/voice-upgrade.js?v=18"></script></body>'));
+    res.type('html').send(html.replace('</body>','<script src="/panel-upgrade.js?v=19"></script><script src="/voice-upgrade.js?v=19"></script></body>'));
   }catch(e){console.error('index-error',e);res.status(500).send('Site yüklenemedi')}
 });
-app.get('/name-voice',async(req,res)=>{
+app.get('/reaction-voice',async(req,res)=>{
   const name=cleanName(req.query?.name||'');
+  const tier=normalizeTier(String(req.query?.tier||'low'));
+  const variant=clampVariant(req.query?.variant);
   if(!name)return res.status(400).end();
   try{
-    const b=await synthName(name);
-    console.log('NAME VOICE OK',name,b.length);
-    res.set({'Content-Type':'audio/wav','Content-Length':String(b.length),'Cache-Control':'public, max-age=86400'});
+    const b=await synthNaturalPhrase(name,tier,variant);
+    res.set({'Content-Type':'audio/mpeg','Content-Length':String(b.length),'Cache-Control':'public, max-age=86400'});
     res.send(b);
   }catch(e){
-    console.error('name-voice-error',name,e?.message||e);
-    res.status(503).json({error:'name voice unavailable'});
+    voiceState='error';voiceError=String(e?.message||e);
+    console.error('reaction-voice-error',name,tier,variant,voiceError);
+    res.status(503).json({error:'natural voice unavailable'});
   }
 });
 app.get('/real-reaction.ogg',async(_req,res)=>{
@@ -108,7 +112,7 @@ app.get('/real-reaction.ogg',async(_req,res)=>{
 app.get('/health',async(_req,res)=>{
   let realReactionBytes=0;
   try{realReactionBytes=(await getRealReaction()).length}catch{}
-  res.json({ok:true,audioMode:'local-piper-name+verified-human-reaction-v18',voiceMode:'local-turkish-neural',piperState,piperError,realReactionBytes,time:new Date().toISOString()});
+  res.json({ok:true,audioMode:'edge-full-phrase+verified-human-reaction-v19',voiceMode:'tr-TR-AhmetNeural-full-sentence',voiceState,voiceError,realReactionBytes,time:new Date().toISOString()});
 });
 
 let liveConnection=null,activeUsername=null,connecting=false,reconnectTimer=null;
@@ -164,6 +168,7 @@ io.on('connection',socket=>{
 
 const PORT=Number(process.env.PORT||3000);
 server.listen(PORT,'0.0.0.0',()=>{
-  console.log(`TikTok Dance Live v18 running on http://0.0.0.0:${PORT}`);
+  console.log(`TikTok Dance Live v19 running on http://0.0.0.0:${PORT}`);
   getRealReaction().then(b=>console.log('VERIFIED REAL REACTION READY',b.length,'bytes')).catch(e=>console.error('REAL REACTION FAIL',e));
+  synthNaturalPhrase('Furkan','mid',0).then(b=>{voiceState='ready';voiceError='';console.log('EDGE HUMAN VOICE READY Furkan',b.length,'bytes')}).catch(e=>{voiceState='error';voiceError=String(e?.message||e);console.error('EDGE HUMAN VOICE FAIL',voiceError)});
 });
