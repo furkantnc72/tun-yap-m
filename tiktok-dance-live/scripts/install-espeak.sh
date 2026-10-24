@@ -14,7 +14,7 @@ cd "$DEBS"
 fetch(){
   local url="$1" out="$2"
   echo "[espeak] downloading $out"
-  curl -fL --retry 4 --retry-delay 2 "$url" -o "$out"
+  curl -fsSL --retry 4 --retry-delay 2 "$url" -o "$out"
 }
 
 fetch "$BASE/e/espeak-ng/espeak-ng_1.51+dfsg-10+deb12u2_amd64.deb" "espeak-ng.deb"
@@ -30,26 +30,33 @@ done
 
 ESPEAK_BIN="$VENDOR/usr/bin/espeak-ng"
 LIBDIR="$VENDOR/usr/lib/x86_64-linux-gnu"
+DATADIR="$LIBDIR/espeak-ng-data"
 DATA_PARENT="$LIBDIR"
 
 if [ ! -x "$ESPEAK_BIN" ]; then
   echo "[espeak] ERROR: executable not found at $ESPEAK_BIN" >&2
   exit 1
 fi
-if [ ! -d "$DATA_PARENT/espeak-ng-data" ]; then
-  echo "[espeak] ERROR: espeak-ng-data not found under $DATA_PARENT" >&2
-  find "$VENDOR/usr" -maxdepth 6 -type d -name 'espeak-ng-data' -print >&2 || true
+if [ ! -f "$DATADIR/phontab" ]; then
+  echo "[espeak] ERROR: phontab not found at $DATADIR/phontab" >&2
+  find "$VENDOR/usr" -maxdepth 7 -type f -name phontab -print >&2 || true
   exit 1
 fi
 
 cat > "$WRAPPER" <<EOF
 #!/usr/bin/env bash
 export LD_LIBRARY_PATH="$LIBDIR:\${LD_LIBRARY_PATH:-}"
+export ESPEAK_DATA_PATH="$DATADIR"
 exec "$ESPEAK_BIN" --path="$DATA_PARENT" "\$@"
 EOF
 chmod +x "$WRAPPER"
 
-"$WRAPPER" --version
-"$WRAPPER" -v tr --ipa -q 'Furkan' >/dev/null
+IPA="$("$WRAPPER" -v tr --ipa -q 'Furkan' 2>"$DEBS/espeak-test.err" || true)"
+if [ -z "$(printf '%s' "$IPA" | tr -d '[:space:]')" ]; then
+  echo "[espeak] ERROR: Furkan phoneme test returned empty output" >&2
+  cat "$DEBS/espeak-test.err" >&2 || true
+  exit 1
+fi
 
+echo "LOCAL ESPEAK PHONEME Furkan=$IPA"
 echo "LOCAL ESPEAK READY $WRAPPER"
