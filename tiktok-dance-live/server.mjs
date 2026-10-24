@@ -3,7 +3,7 @@ import http from 'http';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { Server } from 'socket.io';
-import { Communicate } from 'edge-tts-universal';
+import { EdgeTTS } from 'edge-tts-universal';
 import { TikTokLiveConnection, WebcastEvent } from 'tiktok-live-connector';
 
 const app=express(),server=http.createServer(app),io=new Server(server,{cors:{origin:'*'}});
@@ -43,26 +43,39 @@ function phraseFor(name,tier,variant){
   };
   return sets[tier][variant];
 }
-
+function timeoutPromise(ms,label='timeout'){
+  return new Promise((_,reject)=>setTimeout(()=>reject(new Error(label)),ms));
+}
+async function edgeOneShot(text,tier){
+  const tts=new EdgeTTS(text,'tr-TR-AhmetNeural',{
+    rate:tier==='huge'?'+17%':tier==='big'?'+14%':'+10%',
+    volume:'+12%',
+    pitch:'-1Hz'
+  });
+  const result=await Promise.race([
+    tts.synthesize(),
+    timeoutPromise(12000,'Edge neural synthesis timed out')
+  ]);
+  if(!result?.audio)throw new Error('Edge neural returned no audio');
+  let audio;
+  if(typeof result.audio.arrayBuffer==='function'){
+    audio=Buffer.from(await result.audio.arrayBuffer());
+  }else if(Buffer.isBuffer(result.audio)){
+    audio=result.audio;
+  }else if(result.audio instanceof Uint8Array){
+    audio=Buffer.from(result.audio);
+  }else{
+    throw new Error('Unknown Edge audio format');
+  }
+  if(audio.length<2500)throw new Error(`Edge neural audio too small: ${audio.length}`);
+  return audio;
+}
 async function synthNaturalPhrase(name,tier='low',variant=0){
   tier=normalizeTier(tier);variant=clampVariant(variant);
   const key=`${name.toLocaleLowerCase('tr-TR')}|${tier}|${variant}`;
   if(phraseCache.has(key))return phraseCache.get(key);
   const text=phraseFor(name,tier,variant);
-  const voice='tr-TR-AhmetNeural';
-  const communicate=new Communicate(text,{
-    voice,
-    rate:tier==='huge'?'+17%':tier==='big'?'+14%':'+11%',
-    volume:'+12%',
-    pitch:'-1Hz',
-    connectionTimeout:15000
-  });
-  const chunks=[];
-  for await(const chunk of communicate.stream()){
-    if(chunk?.type==='audio'&&chunk?.data)chunks.push(Buffer.from(chunk.data));
-  }
-  const audio=Buffer.concat(chunks);
-  if(audio.length<2500)throw new Error('Neural voice returned too little audio');
+  const audio=await edgeOneShot(text,tier);
   if(phraseCache.size>300)phraseCache.delete(phraseCache.keys().next().value);
   phraseCache.set(key,audio);
   console.log('HUMAN PHRASE OK',JSON.stringify(text),audio.length,'bytes');
@@ -84,7 +97,7 @@ app.get('/',async(_req,res)=>{
   try{
     const html=await fs.readFile(indexPath,'utf8');
     res.set('Cache-Control','no-store');
-    res.type('html').send(html.replace('</body>','<script src="/panel-upgrade.js?v=19"></script><script src="/voice-upgrade.js?v=19"></script></body>'));
+    res.type('html').send(html.replace('</body>','<script src="/panel-upgrade.js?v=20"></script><script src="/voice-upgrade.js?v=20"></script></body>'));
   }catch(e){console.error('index-error',e);res.status(500).send('Site yüklenemedi')}
 });
 app.get('/reaction-voice',async(req,res)=>{
@@ -94,6 +107,7 @@ app.get('/reaction-voice',async(req,res)=>{
   if(!name)return res.status(400).end();
   try{
     const b=await synthNaturalPhrase(name,tier,variant);
+    voiceState='ready';voiceError='';
     res.set({'Content-Type':'audio/mpeg','Content-Length':String(b.length),'Cache-Control':'public, max-age=86400'});
     res.send(b);
   }catch(e){
@@ -112,7 +126,7 @@ app.get('/real-reaction.ogg',async(_req,res)=>{
 app.get('/health',async(_req,res)=>{
   let realReactionBytes=0;
   try{realReactionBytes=(await getRealReaction()).length}catch{}
-  res.json({ok:true,audioMode:'edge-full-phrase+verified-human-reaction-v19',voiceMode:'tr-TR-AhmetNeural-full-sentence',voiceState,voiceError,realReactionBytes,time:new Date().toISOString()});
+  res.json({ok:true,audioMode:'edge-oneshot-full-phrase+verified-human-reaction-v20',voiceMode:'tr-TR-AhmetNeural-full-sentence',voiceState,voiceError,realReactionBytes,time:new Date().toISOString()});
 });
 
 let liveConnection=null,activeUsername=null,connecting=false,reconnectTimer=null;
@@ -168,7 +182,7 @@ io.on('connection',socket=>{
 
 const PORT=Number(process.env.PORT||3000);
 server.listen(PORT,'0.0.0.0',()=>{
-  console.log(`TikTok Dance Live v19 running on http://0.0.0.0:${PORT}`);
+  console.log(`TikTok Dance Live v20 running on http://0.0.0.0:${PORT}`);
   getRealReaction().then(b=>console.log('VERIFIED REAL REACTION READY',b.length,'bytes')).catch(e=>console.error('REAL REACTION FAIL',e));
   synthNaturalPhrase('Furkan','mid',0).then(b=>{voiceState='ready';voiceError='';console.log('EDGE HUMAN VOICE READY Furkan',b.length,'bytes')}).catch(e=>{voiceState='error';voiceError=String(e?.message||e);console.error('EDGE HUMAN VOICE FAIL',voiceError)});
 });
