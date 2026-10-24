@@ -1,9 +1,10 @@
 {
   "name": "tiktok-dance-live",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "private": true,
   "type": "module",
   "scripts": {
+    "postinstall": "python3 -m venv .venv && .venv/bin/pip install --disable-pip-version-check --no-cache-dir edge-tts==7.3.1",
     "start": "node server.mjs"
   },
   "engines": {
