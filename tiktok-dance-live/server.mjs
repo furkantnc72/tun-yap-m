@@ -1,22 +1,91 @@
 import express from 'express';
 import http from 'http';
 import { promises as fs } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { Server } from 'socket.io';
+import { EdgeTTS } from 'node-edge-tts';
 import { TikTokLiveConnection, WebcastEvent } from 'tiktok-live-connector';
 
 const app=express(),server=http.createServer(app),io=new Server(server,{cors:{origin:'*'}});
 const indexPath=path.join(process.cwd(),'public','index.html');
+const wait=ms=>new Promise(r=>setTimeout(r,ms));
+
+// Sadece değişken kullanıcı adı için TTS kullanılır. Teşekkür/maşallah tepkileri gerçek videodan gelir.
+const nameVoice=new EdgeTTS({
+  voice:'tr-TR-AhmetNeural',
+  lang:'tr-TR',
+  outputFormat:'audio-24khz-96kbitrate-mono-mp3',
+  pitch:'-10%',
+  rate:'+14%',
+  volume:'+50%',
+  timeout:18000
+});
+const nameCache=new Map(),nameInflight=new Map();
+let nameTail=Promise.resolve(),lastNameTts=0;
+
+function cleanName(v=''){
+  return String(v).replace(/[_.]+/g,' ').replace(/[^\p{L}\p{N} çğıöşüÇĞİÖŞÜ'-]/gu,'').replace(/\s+/g,' ').trim().slice(0,45);
+}
+async function synthNameOnce(text){
+  const tmp=path.join(os.tmpdir(),`gifter-${crypto.randomUUID()}.mp3`);
+  try{
+    const elapsed=Date.now()-lastNameTts;
+    if(elapsed<900)await wait(900-elapsed);
+    let lastErr;
+    for(let i=0;i<5;i++){
+      try{
+        await nameVoice.ttsPromise(text+'!',tmp);
+        lastNameTts=Date.now();
+        const b=await fs.readFile(tmp);
+        if(!b.length)throw new Error('empty name voice');
+        return b;
+      }catch(e){
+        lastErr=e;
+        if(!/429|too many requests/i.test(String(e?.message||e))||i===4)throw e;
+        await wait([1200,2200,3600,5600,8000][i]);
+      }
+    }
+    throw lastErr;
+  }finally{fs.unlink(tmp).catch(()=>{})}
+}
+async function synthName(text){
+  const key=text.toLocaleLowerCase('tr-TR');
+  if(nameCache.has(key))return nameCache.get(key);
+  if(nameInflight.has(key))return nameInflight.get(key);
+  const run=nameTail.catch(()=>{}).then(()=>synthNameOnce(text));
+  nameTail=run.then(()=>undefined,()=>undefined);
+  const job=run.then(b=>{
+    if(nameCache.size>250)nameCache.delete(nameCache.keys().next().value);
+    nameCache.set(key,b);
+    return b;
+  });
+  nameInflight.set(key,job);
+  try{return await job}finally{nameInflight.delete(key)}
+}
 
 app.use(express.static('public',{index:false,maxAge:'1h'}));
 app.get('/',async(_req,res)=>{
   try{
     const html=await fs.readFile(indexPath,'utf8');
     res.set('Cache-Control','no-store');
-    res.type('html').send(html.replace('</body>','<script src="/panel-upgrade.js?v=14"></script><script src="/voice-upgrade.js?v=14"></script></body>'));
+    res.type('html').send(html.replace('</body>','<script src="/panel-upgrade.js?v=15"></script><script src="/voice-upgrade.js?v=15"></script></body>'));
   }catch(e){console.error('index-error',e);res.status(500).send('Site yüklenemedi')}
 });
-app.get('/health',(_req,res)=>res.json({ok:true,audioMode:'full-loop+real-video-reactions-v14',voiceMode:'real-reference-audio-no-tts',time:new Date().toISOString()}));
+app.get('/name-voice',async(req,res)=>{
+  const name=cleanName(req.query?.name||'');
+  if(!name)return res.status(400).end();
+  try{
+    const b=await synthName(name);
+    res.set({'Content-Type':'audio/mpeg','Content-Length':String(b.length),'Cache-Control':'public, max-age=86400'});
+    res.send(b);
+  }catch(e){
+    console.error('name-voice-error',name,e?.message||e);
+    res.status(503).end();
+  }
+});
+app.get('/health',(_req,res)=>res.json({ok:true,audioMode:'name+real-video-reactions-v15',voiceMode:'name-only-neural+real-thanks-mashallah',time:new Date().toISOString()}));
 
 let liveConnection=null,activeUsername=null,connecting=false,reconnectTimer=null;
 function normalizeUsername(v=''){return String(v).trim().replace(/^https?:\/\/(www\.)?tiktok\.com\/@/i,'').replace(/\/live.*$/i,'').replace(/^@/,'').replace(/[^a-zA-Z0-9._-]/g,'').slice(0,64)}
@@ -70,4 +139,4 @@ io.on('connection',socket=>{
 });
 
 const PORT=Number(process.env.PORT||3000);
-server.listen(PORT,'0.0.0.0',()=>console.log(`TikTok Dance Live v14 running on http://0.0.0.0:${PORT}`));
+server.listen(PORT,'0.0.0.0',()=>console.log(`TikTok Dance Live v15 running on http://0.0.0.0:${PORT}`));
