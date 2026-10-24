@@ -8,6 +8,7 @@ import { TikTokLiveConnection, WebcastEvent } from 'tiktok-live-connector';
 
 const app=express(),server=http.createServer(app),io=new Server(server,{cors:{origin:'*'}});
 const indexPath=path.join(process.cwd(),'public','index.html');
+const localEspeak=path.join(process.cwd(),'vendor','espeak','bin','espeak-ng-local');
 const nameCache=new Map();
 let realReactionBuffer=null;
 let piper=null;
@@ -21,11 +22,13 @@ function cleanName(v=''){
 const piperReady=(async()=>{
   try{
     console.log('PIPER loading Turkish voice model...');
+    await fs.access(localEspeak);
+    console.log('PIPER using local espeak',localEspeak);
     const modelPath=await resolveModelPathFromOptions({
       model:'tr_TR-dfki-medium',
       modelsDir:path.join(process.cwd(),'models')
     });
-    piper=await PiperNativeTTS.load({modelPath});
+    piper=await PiperNativeTTS.load({modelPath,espeakBinary:localEspeak});
     const probe=await piper.synthesize('Furkan!',{
       outputFormat:'wav',
       lengthScale:.82,
@@ -35,13 +38,13 @@ const piperReady=(async()=>{
     });
     if(!probe?.audio?.length)throw new Error('Piper probe returned empty audio');
     piperState='ready';
-    console.log('PIPER NAME READY',probe.audio.length,'bytes',modelPath);
+    console.log('PIPER NAME READY Furkan',probe.audio.length,'bytes');
     return piper;
   }catch(e){
     piperState='error';
     piperError=String(e?.message||e);
     console.error('PIPER NAME FAIL',piperError);
-    throw e;
+    return null;
   }
 })();
 
@@ -49,6 +52,7 @@ async function synthName(text){
   const key=text.toLocaleLowerCase('tr-TR');
   if(nameCache.has(key))return nameCache.get(key);
   const engine=await piperReady;
+  if(!engine)throw new Error(piperError||'Piper name engine unavailable');
   const result=await engine.synthesize(text+'!',{
     outputFormat:'wav',
     lengthScale:.82,
@@ -78,7 +82,7 @@ app.get('/',async(_req,res)=>{
   try{
     const html=await fs.readFile(indexPath,'utf8');
     res.set('Cache-Control','no-store');
-    res.type('html').send(html.replace('</body>','<script src="/panel-upgrade.js?v=17"></script><script src="/voice-upgrade.js?v=17"></script></body>'));
+    res.type('html').send(html.replace('</body>','<script src="/panel-upgrade.js?v=18"></script><script src="/voice-upgrade.js?v=18"></script></body>'));
   }catch(e){console.error('index-error',e);res.status(500).send('Site yüklenemedi')}
 });
 app.get('/name-voice',async(req,res)=>{
@@ -104,7 +108,7 @@ app.get('/real-reaction.ogg',async(_req,res)=>{
 app.get('/health',async(_req,res)=>{
   let realReactionBytes=0;
   try{realReactionBytes=(await getRealReaction()).length}catch{}
-  res.json({ok:true,audioMode:'local-piper-name+verified-human-reaction-v17',voiceMode:'local-turkish-neural',piperState,piperError,realReactionBytes,time:new Date().toISOString()});
+  res.json({ok:true,audioMode:'local-piper-name+verified-human-reaction-v18',voiceMode:'local-turkish-neural',piperState,piperError,realReactionBytes,time:new Date().toISOString()});
 });
 
 let liveConnection=null,activeUsername=null,connecting=false,reconnectTimer=null;
@@ -160,6 +164,6 @@ io.on('connection',socket=>{
 
 const PORT=Number(process.env.PORT||3000);
 server.listen(PORT,'0.0.0.0',()=>{
-  console.log(`TikTok Dance Live v17 running on http://0.0.0.0:${PORT}`);
+  console.log(`TikTok Dance Live v18 running on http://0.0.0.0:${PORT}`);
   getRealReaction().then(b=>console.log('VERIFIED REAL REACTION READY',b.length,'bytes')).catch(e=>console.error('REAL REACTION FAIL',e));
 });
