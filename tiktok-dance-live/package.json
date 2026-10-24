@@ -1,18 +1,17 @@
 {
   "name": "tiktok-dance-live",
-  "version": "1.2.2",
+  "version": "1.3.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "postinstall": "bash scripts/install-espeak.sh",
     "start": "node server.mjs"
   },
   "engines": {
     "node": "22.x"
   },
   "dependencies": {
+    "edge-tts-universal": "^1.4.0",
     "express": "^5.1.0",
-    "pipertts": "^1.2.0",
     "socket.io": "^4.8.1",
     "tiktok-live-connector": "2.5.0"
   }
