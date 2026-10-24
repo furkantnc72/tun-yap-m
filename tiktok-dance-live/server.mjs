@@ -106,11 +106,17 @@ async function synthPhrase(name, tier='low', variant=0) {
     ];
 
     try {
-      await execFileAsync(edgePython, args, {
-        timeout: 18000,
-        maxBuffer: 1024 * 1024,
-        env: { ...process.env, PYTHONUNBUFFERED: '1' }
-      });
+      try {
+        await execFileAsync(edgePython, args, {
+          timeout: 18000,
+          maxBuffer: 1024 * 1024,
+          env: { ...process.env, PYTHONUNBUFFERED: '1' }
+        });
+      } catch (e) {
+        const detail = String(e?.stderr || e?.stdout || e?.message || e);
+        console.error('EDGE CLI DETAIL', detail);
+        throw new Error(detail);
+      }
       const audio = await fs.readFile(temp);
       if (audio.length < 3000) throw new Error(`edge-tts audio too small: ${audio.length}`);
       if (phraseCache.size > 300) phraseCache.delete(phraseCache.keys().next().value);
