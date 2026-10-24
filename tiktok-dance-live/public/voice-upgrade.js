@@ -1,4 +1,4 @@
-const VERIFIED_REACTION='/real-reaction.ogg?v=16';
+const VERIFIED_REACTION='/real-reaction.ogg?v=18';
 const nameVoiceCache=new Map();
 function sleep(ms){return new Promise(r=>setTimeout(r,ms))}
 
@@ -8,9 +8,9 @@ try{speechSynthesis?.cancel?.()}catch{}
 async function getNameVoice(name){
   const key=String(name||'').toLocaleLowerCase('tr-TR');
   if(nameVoiceCache.has(key))return nameVoiceCache.get(key);
-  const r=await fetch('/name-voice?name='+encodeURIComponent(name),{cache:'force-cache'});
+  const r=await fetch('/name-voice?v=18&name='+encodeURIComponent(name),{cache:'no-store'});
   if(!r.ok)throw new Error('name voice '+r.status);
-  const blob=await r.blob();if(blob.size<800)throw new Error('empty name voice');
+  const blob=await r.blob();if(blob.size<1500)throw new Error('empty name voice');
   const url=URL.createObjectURL(blob);
   if(nameVoiceCache.size>80){const first=nameVoiceCache.keys().next().value;URL.revokeObjectURL(nameVoiceCache.get(first));nameVoiceCache.delete(first)}
   nameVoiceCache.set(key,url);return url;
@@ -19,7 +19,7 @@ async function playName(name,repeat=1){
   try{
     const url=await getNameVoice(name);
     for(let i=0;i<repeat;i++){
-      await new Promise(resolve=>{const a=new Audio(url);a.volume=1;a.playbackRate=.98;a.onended=resolve;a.onerror=resolve;a.play().catch(resolve)});
+      await new Promise(resolve=>{const a=new Audio(url);a.volume=1;a.playbackRate=1;a.onended=resolve;a.onerror=resolve;a.play().catch(resolve)});
       if(i+1<repeat)await sleep(55);
     }
   }catch(e){console.warn('name voice skipped',e)}
