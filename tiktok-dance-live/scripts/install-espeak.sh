@@ -5,14 +5,23 @@ APP_ROOT="$(pwd)"
 VENDOR="$APP_ROOT/vendor/espeak"
 DEBS="$APP_ROOT/vendor/debs"
 WRAPPER="$VENDOR/bin/espeak-ng-local"
+BASE="https://deb.debian.org/debian/pool/main"
 
 rm -rf "$VENDOR" "$DEBS"
 mkdir -p "$VENDOR" "$DEBS" "$VENDOR/bin"
-
 cd "$DEBS"
 
-echo "[espeak] downloading Debian runtime packages..."
-apt-get download espeak-ng libespeak-ng1 espeak-ng-data libpcaudio0 libsonic0
+fetch(){
+  local url="$1" out="$2"
+  echo "[espeak] downloading $out"
+  curl -fL --retry 4 --retry-delay 2 "$url" -o "$out"
+}
+
+fetch "$BASE/e/espeak-ng/espeak-ng_1.51+dfsg-10+deb12u2_amd64.deb" "espeak-ng.deb"
+fetch "$BASE/e/espeak-ng/libespeak-ng1_1.51+dfsg-10+deb12u2_amd64.deb" "libespeak-ng1.deb"
+fetch "$BASE/e/espeak-ng/espeak-ng-data_1.51+dfsg-10+deb12u2_amd64.deb" "espeak-ng-data.deb"
+fetch "$BASE/p/pcaudiolib/libpcaudio0_1.2-2_amd64.deb" "libpcaudio0.deb"
+fetch "$BASE/s/sonic/libsonic0_0.2.0-12_amd64.deb" "libsonic0.deb"
 
 for deb in ./*.deb; do
   echo "[espeak] extracting $(basename "$deb")"
@@ -29,7 +38,7 @@ if [ ! -x "$ESPEAK_BIN" ]; then
 fi
 if [ ! -d "$DATA_PARENT/espeak-ng-data" ]; then
   echo "[espeak] ERROR: espeak-ng-data not found under $DATA_PARENT" >&2
-  find "$VENDOR/usr" -maxdepth 5 -type d -name 'espeak-ng-data' -print >&2 || true
+  find "$VENDOR/usr" -maxdepth 6 -type d -name 'espeak-ng-data' -print >&2 || true
   exit 1
 fi
 
